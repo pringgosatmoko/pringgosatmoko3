@@ -1,52 +1,37 @@
 
 import { createClient } from '@supabase/supabase-js';
 
-const getEnv = (key: string) => {
-  const win = window as any;
-  if (!win.process) win.process = { env: {} };
-  if (!win.process.env) win.process.env = {};
-  return win.process.env[key] || (import.meta as any).env?.[key] || "";
-};
-
-// Dummy client jika key tidak ada
-const createDummyClient = () => {
-  console.warn("%c[SYSTEM]%c Database Offline Mode (Key Missing)", "color: #f59e0b; font-weight: bold", "color: #94a3b8");
-  return {
-    from: () => ({
-      select: () => ({ eq: () => ({ order: () => ({ single: () => Promise.resolve({ data: null }), then: (r) => r({ data: [] }) }), then: (r) => r({ data: [] }) }), then: (r) => r({ data: [] }) }),
-      insert: () => Promise.resolve({ data: [], error: null }),
-      update: () => ({ eq: () => Promise.resolve({ error: null }) }),
-      upsert: () => Promise.resolve({ data: [], error: null }),
-      delete: () => ({ eq: () => Promise.resolve({ error: null }) }),
-    }),
-    auth: {
-      getSession: () => Promise.resolve({ data: { session: null } }),
-      onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }),
-      signOut: () => Promise.resolve({}),
-      signInWithPassword: () => Promise.resolve({ error: { message: "Database Config Missing" } }),
-      signUp: () => Promise.resolve({ error: { message: "Database Config Missing" } }),
-      updateUser: () => Promise.resolve({ error: { message: "Database Config Missing" } })
-    }
-  } as any;
-};
-
-const createSupabaseClient = () => {
-  const url = getEnv('VITE_DATABASE_URL') || 'https://urokqoorxuiokizesiwa.supabase.co';
-  const key = getEnv('VITE_SUPABASE_ANON');
-  
-  if (!key) {
-    // Tidak log error yang menakutkan, cukup warning di console
-    return createDummyClient();
+// Helper untuk mengambil environment variable secara aman
+const getEnv = (key: string): string => {
+  if (typeof process !== 'undefined' && process.env && process.env[key]) {
+    return process.env[key];
   }
-  
-  try {
-    return createClient(url, key);
-  } catch (e) {
-    return createDummyClient();
-  }
+  return (window as any).process?.env?.[key] || (import.meta as any).env?.[key] || "";
 };
 
-export const supabase = createSupabaseClient();
+// Inisialisasi Supabase dengan proteksi jika key belum tersedia
+const supabaseUrl = getEnv('VITE_DATABASE_URL') || 'https://urokqoorxuiokizesiwa.supabase.co';
+const supabaseAnonKey = getEnv('VITE_SUPABASE_ANON');
+
+export const supabase = supabaseAnonKey 
+  ? createClient(supabaseUrl, supabaseAnonKey)
+  : ({
+      from: () => ({
+        select: () => ({ eq: () => ({ order: () => ({ single: () => Promise.resolve({ data: null }), then: (r) => r({ data: [] }) }), then: (r) => r({ data: [] }) }), then: (r) => r({ data: [] }) }),
+        insert: () => Promise.resolve({ data: [], error: null }),
+        update: () => ({ eq: () => Promise.resolve({ error: null }) }),
+        upsert: () => Promise.resolve({ data: [], error: null }),
+        delete: () => ({ eq: () => Promise.resolve({ error: null }) }),
+      }),
+      auth: {
+        getSession: () => Promise.resolve({ data: { session: null } }),
+        onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }),
+        signOut: () => Promise.resolve({}),
+        signInWithPassword: () => Promise.resolve({ error: { message: "Database Config Missing" } }),
+        signUp: () => Promise.resolve({ error: { message: "Database Config Missing" } }),
+        updateUser: () => Promise.resolve({ error: { message: "Database Config Missing" } })
+      }
+    } as any);
 
 export const getSystemSettings = async () => {
   try {
@@ -121,16 +106,21 @@ export const manualUpdateCredits = async (email: string, newCredits: number) => 
   return !error;
 };
 
-export const updatePresence = async (email: string) => {
-  if (!email) return;
-  try {
-    await supabase.from('members').upsert({ email: email.toLowerCase(), last_seen: new Date().toISOString() }, { onConflict: 'email' });
-  } catch (e) {}
-};
-
+// Fix: Implementation of isUserOnline to track real-time activity
 export const isUserOnline = (lastSeen: string | null | undefined) => {
   if (!lastSeen) return false;
-  return (new Date().getTime() - new Date(lastSeen).getTime()) / 1000 < 150; 
+  const lastSeenDate = new Date(lastSeen).getTime();
+  const now = new Date().getTime();
+  const diffMinutes = (now - lastSeenDate) / (1000 * 60);
+  return diffMinutes < 5; // User is considered online if seen in the last 5 minutes
+};
+
+// Fix: Implementation of updatePresence to record the latest user activity timestamp
+export const updatePresence = async (email: string) => {
+  try {
+    const now = new Date().toISOString();
+    await supabase.from('members').update({ last_seen: now }).eq('email', email.toLowerCase());
+  } catch (e) {}
 };
 
 export const isAdmin = (email: string) => {
@@ -187,11 +177,8 @@ let currentSlot = 1;
 export const rotateApiKey = () => {
   currentSlot = currentSlot >= 3 ? 1 : currentSlot + 1;
   const nextKey = getEnv(`VITE_GEMINI_API_${currentSlot}`);
-  const win = window as any;
-  if (nextKey) {
-    if (!win.process) win.process = { env: {} };
-    if (!win.process.env) win.process.env = {};
-    win.process.env.API_KEY = nextKey;
+  if (nextKey && typeof process !== 'undefined') {
+    process.env.API_KEY = nextKey;
   }
   return nextKey || getEnv('VITE_GEMINI_API_1');
 };
@@ -203,5 +190,5 @@ export const auditApiKeys = () => ({
   activeSlot: currentSlot,
   midtrans: !!getEnv('VITE_MIDTRANS_SERVER_ID'),
   telegram: !!getEnv('VITE_TELEGRAM_BOT_TOKEN'),
-  supabase: !!getEnv('VITE_SUPABASE_ANON')
+  supabase: !!supabaseAnonKey
 });

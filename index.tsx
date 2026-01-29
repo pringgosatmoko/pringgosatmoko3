@@ -4,17 +4,20 @@ import ReactDOM from 'react-dom/client';
 import App from './App';
 import './index.css';
 
-// Proteksi Global Window
+// Mendeklarasikan variabel global agar dikenali oleh TypeScript Compiler (tsc)
+// Fix: Removed duplicate 'process' declaration which conflicts with built-in Node types.
+// Fix: Unified AIStudio type definition and applied it to the Window interface.
 declare global {
+  interface AIStudio {
+    hasSelectedApiKey: () => Promise<boolean>;
+    openSelectKey: () => Promise<void>;
+  }
+
   interface Window {
-    process: any;
-    // aistudio is already defined as AIStudio in the global scope by the platform.
-    // Redeclaring it here with 'any' causes "identical modifiers" and "Subsequent property declarations must have the same type" errors.
+    snap: any;
+    aistudio: AIStudio;
   }
 }
-
-// @google/genai guidelines: Assume process.env.API_KEY is pre-configured and accessible.
-// We must not manually define or initialize process.env in the code.
 
 const rootElement = document.getElementById('root');
 if (rootElement) {
