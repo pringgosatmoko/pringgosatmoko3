@@ -42,7 +42,8 @@ export const ChatAssistant: React.FC<ChatAssistantProps> = ({ onBack, lang }) =>
     setIsTyping(true);
 
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
+      // Create a new instance right before use to ensure the latest API key
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       
       const systemInstruction = `Anda adalah "SATMOKO AI CORE" - Intelijen Utama Satmoko Studio Creative.
 
@@ -76,7 +77,12 @@ GAYA KOMUNIKASI:
       const reply = response.text || (lang === 'id' ? "Sorry Bro, koneksi lagi agak lag. Bisa ulangi pertanyaannya?" : "Sorry Bro, connection is lagging. Can you repeat?");
       setMessages(prev => [...prev, { role: 'assistant', text: reply }]);
     } catch (e: any) {
-      if (e.message?.includes('429') && retryCount < 2) {
+      const errorMsg = e.message || "";
+      if (errorMsg.includes("Requested entity was not found.")) {
+        if (window.aistudio) window.aistudio.openSelectKey();
+      }
+
+      if (errorMsg.includes('429') && retryCount < 2) {
         rotateApiKey(); 
         handleSend(retryCount + 1); 
       } else {

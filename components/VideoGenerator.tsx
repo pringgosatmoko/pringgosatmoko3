@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { GoogleGenAI, VideoGenerationReferenceType } from '@google/genai';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -61,7 +62,7 @@ export const VideoGenerator: React.FC<VideoGeneratorProps> = ({ mode, onBack, la
         refreshCredits();
       }
 
-      // Initialize GoogleGenAI with a configuration object as per GenAI coding guidelines
+      // Initialize GoogleGenAI right before use to ensure latest API key
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       const isMultiImage = sourceImages.length > 1;
       const finalPrompt = `${prompt}. Hasil sinematik, gerakan halus, kualitas 720p HD.`;
@@ -90,13 +91,19 @@ export const VideoGenerator: React.FC<VideoGeneratorProps> = ({ mode, onBack, la
         // Fetch the video content using the download link and append the API key
         const response = await fetch(`${uri}&key=${process.env.API_KEY}`);
         const responseBlob = await response.blob();
-        // Correct casting to Blob to ensure compatibility with URL.createObjectURL
-        setVideoUrl(URL.createObjectURL(responseBlob as Blob));
+        setVideoUrl(URL.createObjectURL(responseBlob));
         addLog("Video Selesai Dibuat!", "success");
       }
     } catch (e: any) { 
-      rotateApiKey();
-      if (retryCount < 2) return generateVideo(retryCount + 1);
+      const errorMsg = e.message || "";
+      if (errorMsg.includes("Requested entity was not found.")) {
+        if (window.aistudio) window.aistudio.openSelectKey();
+      }
+
+      if (retryCount < 2) {
+        rotateApiKey();
+        return generateVideo(retryCount + 1);
+      }
       addLog("Gagal memproses video, silakan coba lagi.", "error");
     } finally { setIsGenerating(false); refreshCredits(); }
   };
@@ -153,4 +160,4 @@ export const VideoGenerator: React.FC<VideoGeneratorProps> = ({ mode, onBack, la
           <section className="glass-panel p-8 rounded-[3rem] bg-slate-900/40 space-y-6 shadow-2xl border-white/5">
             <textarea value={prompt} onChange={e => setPrompt(e.target.value)} className="w-full h-32 bg-black/40 border border-white/10 rounded-2xl p-4 text-xs text-white outline-none focus:border-cyan-500/50" placeholder="Tulis instruksi video Master di sini..." />
             <div className="space-y-4">
-              <label className="text-[10px] font-bold uppercase text-slate-500 px-1">Gambar Referensi</
+              <label className="text-[10px] font-bold uppercase text-slate-500 px-1">Gambar Referensi</label>

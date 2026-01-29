@@ -15,17 +15,17 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onSuccess, lang, forcedMod
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [selectedPlan, setSelectedPlan] = useState('1B'); 
+  const [selectedPlan, setSelectedPlan] = useState('FREE'); 
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
 
-  // Update mode if forced from Navbar
   useEffect(() => {
     if (forcedMode === 'register') setIsRegister(true);
     if (forcedMode === 'login') setIsRegister(false);
   }, [forcedMode]);
 
   const plans = [
+    { label: 'FREE', price: '0', en: 'FREE', enPrice: '0', credits: 100 },
     { label: '1B', price: '100k', en: '1M', enPrice: '100k', credits: 1000 },
     { label: '3B', price: '250k', en: '3M', enPrice: '250k', credits: 3500 },
     { label: '1T', price: '900k', en: '1Y', enPrice: '900k', credits: 15000 }
@@ -43,7 +43,8 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onSuccess, lang, forcedMod
       submitReg: "DAFTAR SEKARANG",
       noAccount: "BELUM PUNYA AKUN? DAFTAR",
       haveAccount: "SUDAH PUNYA AKUN? MASUK",
-      regSuccess: "PENDAFTARAN BERHASIL: Silakan tunggu persetujuan dari Admin.",
+      regSuccess: "PENDAFTARAN BERHASIL: Silakan tunggu persetujuan Admin.",
+      regSuccessFree: "PENDAFTARAN BERHASIL: Akun FREE aktif! Silakan masuk untuk bonus 100 CR.",
       contactAdmin: "HUBUNGI ADMIN",
       back: "KEMBALI"
     },
@@ -59,6 +60,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onSuccess, lang, forcedMod
       noAccount: "NEED AN ACCOUNT? REGISTER",
       haveAccount: "HAVE AN ACCOUNT? LOGIN",
       regSuccess: "SUCCESS: Pending admin approval.",
+      regSuccessFree: "SUCCESS: FREE account active! Login to start with 100 CR.",
       contactAdmin: "CONTACT ADMIN",
       back: "BACK"
     }
@@ -80,19 +82,23 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onSuccess, lang, forcedMod
         if (authError) throw authError;
 
         const selectedPlanData = plans.find(p => p.label === selectedPlan);
-        const initialCredits = selectedPlanData ? selectedPlanData.credits : 1000;
+        const initialCredits = selectedPlanData ? selectedPlanData.credits : 100;
+        
+        // LOGIKA FREE: Langsung ACTIVE, lainnya PENDING
+        const initialStatus = selectedPlan === 'FREE' ? 'active' : 'pending';
+        const expiryDate = selectedPlan === 'FREE' ? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() : null;
 
         await supabase.from('members').insert([{ 
           email: email.toLowerCase(), 
-          status: 'pending', 
+          status: initialStatus, 
           full_name: `${fullName} (${selectedPlan})`,
-          credits: initialCredits 
+          credits: initialCredits,
+          valid_until: expiryDate
         }]);
         
-        // NOTIF TELEGRAM REGISTRASI
-        sendTelegramNotification(`🆕 *USER BARU DAFTAR*\nNama: ${fullName}\nEmail: ${email}\nPaket: ${selectedPlan}\nStatus: PENDING APPROVAL`);
+        sendTelegramNotification(`🆕 *PENDAFTARAN BARU*\nNama: ${fullName}\nEmail: ${email}\nPaket: ${selectedPlan}\nStatus: ${initialStatus.toUpperCase()}`);
         
-        setSuccessMsg(t.regSuccess);
+        setSuccessMsg(selectedPlan === 'FREE' ? t.regSuccessFree : t.regSuccess);
       } else {
         if (isAdmin(email) && password === getAdminPassword()) {
           onSuccess(email, null);
@@ -110,7 +116,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onSuccess, lang, forcedMod
 
         if (memberError || !memberData || memberData.status !== 'active') {
           await supabase.auth.signOut();
-          throw new Error(lang === 'id' ? "AKSES DITOLAK: Akun Anda belum aktif. Hubungi Admin." : "ACCESS DENIED: Your account is not active. Contact Admin.");
+          throw new Error(lang === 'id' ? "AKSES DITOLAK: Akun belum aktif. Hubungi Admin." : "ACCESS DENIED: Account inactive. Contact Admin.");
         }
         onSuccess(email, memberData.valid_until);
       }
@@ -139,9 +145,10 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onSuccess, lang, forcedMod
           
           {successMsg ? (
             <div className="space-y-6 text-center py-2">
-              <p className="text-[10px] text-slate-300 font-bold uppercase tracking-widest">{successMsg}</p>
+              <p className="text-[10px] text-slate-300 font-bold uppercase tracking-widest leading-relaxed">{successMsg}</p>
               <div className="space-y-3">
-                <a href="https://wa.me/6285147007574" target="_blank" className="block w-full py-4 rounded-xl bg-cyan-500 text-black font-bold uppercase text-[10px] tracking-widest shadow-lg shadow-cyan-500/20">{t.contactAdmin}</a>
+                {selectedPlan !== 'FREE' && <a href="https://wa.me/6285147007574" target="_blank" className="block w-full py-4 rounded-xl bg-cyan-500 text-black font-bold uppercase text-[10px] tracking-widest shadow-lg shadow-cyan-500/20">{t.contactAdmin}</a>}
+                <button onClick={() => { setSuccessMsg(''); setIsRegister(false); }} className="w-full py-4 rounded-xl bg-white text-black font-bold uppercase text-[10px] tracking-widest">LOGIN SEKARANG</button>
                 <button onClick={() => setSuccessMsg('')} className="text-[9px] font-bold uppercase text-slate-600 hover:text-white transition-colors">{t.back}</button>
               </div>
             </div>
@@ -150,16 +157,15 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onSuccess, lang, forcedMod
               {isRegister && (
                 <>
                   <input type="text" required placeholder={t.name} value={fullName} onChange={e => setFullName(e.target.value)} className="w-full bg-white/5 border border-white/5 rounded-xl py-4 px-5 text-white text-[11px] font-bold outline-none focus:border-cyan-500/30 transition-all" />
-                  
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-4 gap-2">
                     {plans.map(p => (
                       <button 
                         key={p.label}
                         type="button"
                         onClick={() => setSelectedPlan(p.label)}
-                        className={`py-2 rounded-xl text-[9px] font-bold transition-all border ${selectedPlan === p.label ? 'bg-cyan-500 text-black border-cyan-400' : 'bg-white/5 text-slate-500 border-white/5'}`}
+                        className={`py-2 rounded-xl text-[8px] font-bold transition-all border ${selectedPlan === p.label ? 'bg-cyan-500 text-black border-cyan-400' : 'bg-white/5 text-slate-500 border-white/5'}`}
                       >
-                        {lang === 'id' ? p.label : p.en} ({p.price})
+                        {p.label}<br/>{p.price === '0' ? 'FREE' : p.price}
                       </button>
                     ))}
                   </div>
@@ -169,7 +175,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onSuccess, lang, forcedMod
               <input type="password" required placeholder={t.pass} value={password} onChange={e => setPassword(e.target.value)} className="w-full bg-white/5 border border-white/5 rounded-xl py-4 px-5 text-white text-[11px] font-bold outline-none focus:border-cyan-500/30 transition-all" />
               
               <button type="submit" disabled={isLoading} className="w-full py-4 mt-2 rounded-xl bg-white text-black font-bold uppercase text-[10px] tracking-widest hover:bg-cyan-500 transition-all shadow-xl active:scale-95">
-                {isLoading ? "Sedang Memproses..." : (isRegister ? t.submitReg : t.submitLogin)}
+                {isLoading ? "Memproses..." : (isRegister ? t.submitReg : t.submitLogin)}
               </button>
             </form>
           )}

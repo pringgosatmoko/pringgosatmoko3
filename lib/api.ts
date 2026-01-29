@@ -3,32 +3,22 @@ import { createClient } from '@supabase/supabase-js';
 
 const getEnv = (key: string) => {
   const win = window as any;
-  return win.process?.env?.[key] || (import.meta as any).env?.[key] || "";
+  if (!win.process) win.process = { env: {} };
+  if (!win.process.env) win.process.env = {};
+  return win.process.env[key] || (import.meta as any).env?.[key] || "";
 };
 
-// Robust Dummy Client untuk mencegah crash saat API Key Supabase absen
+// Dummy client jika key tidak ada
 const createDummyClient = () => {
-  console.warn("%c[SYSTEM]%c Mengaktifkan Mode Safe-Dummy (Database Offline)", "color: #f59e0b; font-weight: bold", "color: #94a3b8");
-  
-  const dummyResult = { data: [], error: null };
-  const dummySingle = { data: null, error: null };
-  
-  const builder = {
-    select: () => builder,
-    eq: () => builder,
-    order: () => builder,
-    single: () => Promise.resolve(dummySingle),
-    insert: () => Promise.resolve(dummyResult),
-    update: () => builder,
-    upsert: () => Promise.resolve(dummyResult),
-    delete: () => builder,
-    match: () => builder,
-    // Agar bisa di-await langsung: await supabase.from('x').select('*')
-    then: (resolve: any) => resolve(dummyResult)
-  };
-
+  console.warn("%c[SYSTEM]%c Database Offline Mode (Key Missing)", "color: #f59e0b; font-weight: bold", "color: #94a3b8");
   return {
-    from: () => builder,
+    from: () => ({
+      select: () => ({ eq: () => ({ order: () => ({ single: () => Promise.resolve({ data: null }), then: (r) => r({ data: [] }) }), then: (r) => r({ data: [] }) }), then: (r) => r({ data: [] }) }),
+      insert: () => Promise.resolve({ data: [], error: null }),
+      update: () => ({ eq: () => Promise.resolve({ error: null }) }),
+      upsert: () => Promise.resolve({ data: [], error: null }),
+      delete: () => ({ eq: () => Promise.resolve({ error: null }) }),
+    }),
     auth: {
       getSession: () => Promise.resolve({ data: { session: null } }),
       onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }),
@@ -44,8 +34,8 @@ const createSupabaseClient = () => {
   const url = getEnv('VITE_DATABASE_URL') || 'https://urokqoorxuiokizesiwa.supabase.co';
   const key = getEnv('VITE_SUPABASE_ANON');
   
-  if (!key || key.trim() === "") {
-    console.error("%c[DATABASE ERROR]%c VITE_SUPABASE_ANON is missing! Database features will be non-functional.", "background: #7f1d1d; color: white; font-weight: bold; padding: 2px;", "color: #f87171;");
+  if (!key) {
+    // Tidak log error yang menakutkan, cukup warning di console
     return createDummyClient();
   }
   
@@ -60,18 +50,10 @@ export const supabase = createSupabaseClient();
 
 export const getSystemSettings = async () => {
   try {
-    const { data, error } = await supabase.from('settings').select('*');
-    if (error) throw error;
-    
+    const { data } = await supabase.from('settings').select('*');
     const settings: Record<string, any> = { cost_image: 20, cost_video: 150, cost_voice: 150, cost_studio: 600 };
-    
-    // Defensive check: pastikan data adalah array dan item tidak null
     if (Array.isArray(data)) {
-      data.forEach(item => { 
-        if (item && item.key) {
-          settings[item.key] = item.value; 
-        }
-      });
+      data.forEach(item => { if (item?.key) settings[item.key] = item.value; });
     }
     return settings;
   } catch (e) {
@@ -113,7 +95,7 @@ export const deductCredits = async (email: string, amount: number): Promise<bool
 
 export const updateMemberStatus = async (email: string, status: string, validUntil?: string | null) => {
   const updateData: any = { status };
-  if (validUntil !== undefined) updateData.valid_until = validUntil;
+  if (validUntil) updateData.valid_until = validUntil;
   const { error } = await supabase.from('members').update(updateData).eq('email', email.toLowerCase());
   return !error;
 };
@@ -124,16 +106,14 @@ export const deleteMember = async (email: string) => {
 };
 
 export const approveTopup = async (requestId: string | number, email: string, amount: number) => {
-  try {
-    const currentCredits = await getUserCredits(email);
-    const { error: memberError } = await supabase.from('members').update({ credits: Number(currentCredits) + Number(amount) }).eq('email', email.toLowerCase());
-    if (memberError) throw memberError;
+  const current = await getUserCredits(email);
+  const { error } = await supabase.from('members').update({ credits: Number(current) + Number(amount) }).eq('email', email.toLowerCase());
+  if (!error) {
     await supabase.from('topup_requests').update({ status: 'approved' }).eq('id', requestId);
-    sendTelegramNotification(`✅ *TOPUP MANUAL DISETUJUI*\nUser: ${email}\nAdded: ${amount} CR`);
+    sendTelegramNotification(`✅ *TOPUP MANUAL DISETUJUI*\nUser: ${email}\n+${amount} CR`);
     return true;
-  } catch (e) {
-    return false;
   }
+  return false;
 };
 
 export const manualUpdateCredits = async (email: string, newCredits: number) => {
@@ -144,7 +124,7 @@ export const manualUpdateCredits = async (email: string, newCredits: number) => 
 export const updatePresence = async (email: string) => {
   if (!email) return;
   try {
-    await supabase.from('members').upsert({ email: email.toLowerCase(), last_seen: new Date().toISOString(), status: 'active' }, { onConflict: 'email' });
+    await supabase.from('members').upsert({ email: email.toLowerCase(), last_seen: new Date().toISOString() }, { onConflict: 'email' });
   } catch (e) {}
 };
 
@@ -163,16 +143,11 @@ export const getAdminPassword = () => {
   return getEnv('VITE_PASSW') || 'satmoko123';
 };
 
-// --- MIDTRANS INTEGRATION ---
+// MIDTRANS
 export const createMidtransToken = async (email: string, amount: number, price: number) => {
   const serverKey = getEnv('VITE_MIDTRANS_SERVER_ID');
   if (!serverKey) return null;
-  const orderId = `SAT-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-  const payload = {
-    transaction_details: { order_id: orderId, gross_amount: price },
-    customer_details: { email: email, first_name: email.split('@')[0] },
-    item_details: [{ id: 'TOPUP', price: price, quantity: 1, name: `${amount} Credits` }]
-  };
+  const orderId = `SAT-${Date.now()}`;
   try {
     const response = await fetch('https://app.sandbox.midtrans.com/snap/v1/transactions', {
       method: 'POST',
@@ -181,31 +156,33 @@ export const createMidtransToken = async (email: string, amount: number, price: 
         'Content-Type': 'application/json', 
         'Authorization': `Basic ${btoa(serverKey + ':')}` 
       },
-      body: JSON.stringify(payload)
+      body: JSON.stringify({
+        transaction_details: { order_id: orderId, gross_amount: price },
+        customer_details: { email: email },
+        item_details: [{ id: 'TOPUP', price: price, quantity: 1, name: `${amount} Credits` }]
+      })
     });
     const data = await response.json();
     return { ...data, orderId };
-  } catch (error) { 
-    return null; 
-  }
+  } catch (error) { return null; }
 };
 
 export const processMidtransTopup = async (email: string, amount: number, orderId: string) => {
-  await supabase.from('topup_requests').insert([{ tid: orderId, email: email.toLowerCase(), amount, price: 0, status: 'approved', receipt_url: 'MIDTRANS_AUTO' }]);
   const current = await getUserCredits(email);
   await supabase.from('members').update({ credits: Number(current) + Number(amount) }).eq('email', email.toLowerCase());
-  sendTelegramNotification(`✅ *TOPUP OTOMATIS BERHASIL*\nUser: ${email}\nNominal: ${amount} CR`);
+  await supabase.from('topup_requests').insert([{ tid: orderId, email: email.toLowerCase(), amount, status: 'approved', receipt_url: 'AUTO_MIDTRANS' }]);
+  sendTelegramNotification(`✅ *TOPUP OTOMATIS BERHASIL*\nUser: ${email}\n+${amount} CR`);
   return true;
 };
 
 export const requestTopup = async (email: string, amount: number, price: number, receiptB64: string) => {
-  const tid = `SAT-MAN-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
+  const tid = `SAT-MAN-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
   await supabase.from('topup_requests').insert([{ tid, email: email.toLowerCase(), amount, price, receipt_url: receiptB64, status: 'pending' }]);
   sendTelegramNotification(`💰 *TOPUP MANUAL PENDING*\nUser: ${email}\nID: ${tid}`);
   return { success: true, tid };
 };
 
-// --- MULTI-KEY ROTATION LOGIC ---
+// API ROTATION
 let currentSlot = 1;
 export const rotateApiKey = () => {
   currentSlot = currentSlot >= 3 ? 1 : currentSlot + 1;
@@ -215,19 +192,16 @@ export const rotateApiKey = () => {
     if (!win.process) win.process = { env: {} };
     if (!win.process.env) win.process.env = {};
     win.process.env.API_KEY = nextKey;
-    console.log(`%c[SYSTEM]%c Rotated to Gemini API Slot ${currentSlot}`, "color: #f59e0b; font-weight: bold", "color: #94a3b8");
   }
   return nextKey || getEnv('VITE_GEMINI_API_1');
 };
 
-export const auditApiKeys = () => {
-  return {
-    slot1: !!getEnv('VITE_GEMINI_API_1'),
-    slot2: !!getEnv('VITE_GEMINI_API_2'),
-    slot3: !!getEnv('VITE_GEMINI_API_3'),
-    activeSlot: currentSlot,
-    midtrans: !!getEnv('VITE_MIDTRANS_SERVER_ID'),
-    telegram: !!getEnv('VITE_TELEGRAM_BOT_TOKEN'),
-    supabase: !!getEnv('VITE_SUPABASE_ANON')
-  };
-};
+export const auditApiKeys = () => ({
+  slot1: !!getEnv('VITE_GEMINI_API_1'),
+  slot2: !!getEnv('VITE_GEMINI_API_2'),
+  slot3: !!getEnv('VITE_GEMINI_API_3'),
+  activeSlot: currentSlot,
+  midtrans: !!getEnv('VITE_MIDTRANS_SERVER_ID'),
+  telegram: !!getEnv('VITE_TELEGRAM_BOT_TOKEN'),
+  supabase: !!getEnv('VITE_SUPABASE_ANON')
+});

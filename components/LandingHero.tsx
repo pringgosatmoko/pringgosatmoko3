@@ -39,14 +39,15 @@ export const LandingHero: React.FC = () => {
           repeat: Infinity, 
           ease: "easeInOut" 
         }}
-        className="relative w-[70%] h-[70%] flex items-center justify-center perspective-[2000px]"
+        className="relative w-[70%] h-[70%] flex items-center justify-center"
+        style={{ perspective: '2000px' }}
       >
         <svg viewBox="0 0 400 400" className="w-full h-full drop-shadow-[0_20px_40px_rgba(0,0,0,0.8)]">
           <defs>
             <linearGradient id="cyber-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" style={{ stopColor: '#ffffff', stopOpacity: 1 }} />
-              <stop offset="50%" style={{ stopColor: '#94a3b8', stopOpacity: 1 }} />
-              <stop offset="100%" style={{ stopColor: '#22d3ee', stopOpacity: 1 }} />
+              <stop offset="0%" stopColor="#ffffff" stopOpacity={1} />
+              <stop offset="50%" stopColor="#94a3b8" stopOpacity={1} />
+              <stop offset="100%" stopColor="#22d3ee" stopOpacity={1} />
             </linearGradient>
             <filter id="glow">
               <feGaussianBlur stdDeviation="4" result="coloredBlur"/>
