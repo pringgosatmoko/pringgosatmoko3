@@ -1,18 +1,18 @@
 
 import { createClient } from '@supabase/supabase-js';
 
-// Helper untuk mengambil environment variable secara aman
 const getEnv = (key: string): string => {
   if (typeof process !== 'undefined' && process.env && process.env[key]) {
     return process.env[key];
   }
-  return (window as any).process?.env?.[key] || (import.meta as any).env?.[key] || "";
+  const win = window as any;
+  return win.process?.env?.[key] || (import.meta as any).env?.[key] || "";
 };
 
-// Inisialisasi Supabase dengan proteksi jika key belum tersedia
 const supabaseUrl = getEnv('VITE_DATABASE_URL') || 'https://urokqoorxuiokizesiwa.supabase.co';
 const supabaseAnonKey = getEnv('VITE_SUPABASE_ANON');
 
+// Client fallback jika key tidak ditemukan tanpa memutus rantai eksekusi
 export const supabase = supabaseAnonKey 
   ? createClient(supabaseUrl, supabaseAnonKey)
   : ({
@@ -27,9 +27,9 @@ export const supabase = supabaseAnonKey
         getSession: () => Promise.resolve({ data: { session: null } }),
         onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }),
         signOut: () => Promise.resolve({}),
-        signInWithPassword: () => Promise.resolve({ error: { message: "Database Config Missing" } }),
-        signUp: () => Promise.resolve({ error: { message: "Database Config Missing" } }),
-        updateUser: () => Promise.resolve({ error: { message: "Database Config Missing" } })
+        signInWithPassword: () => Promise.resolve({ error: { message: "Database Offline" } }),
+        signUp: () => Promise.resolve({ error: { message: "Database Offline" } }),
+        updateUser: () => Promise.resolve({ error: { message: "Database Offline" } })
       }
     } as any);
 
@@ -106,16 +106,13 @@ export const manualUpdateCredits = async (email: string, newCredits: number) => 
   return !error;
 };
 
-// Fix: Implementation of isUserOnline to track real-time activity
 export const isUserOnline = (lastSeen: string | null | undefined) => {
   if (!lastSeen) return false;
   const lastSeenDate = new Date(lastSeen).getTime();
   const now = new Date().getTime();
-  const diffMinutes = (now - lastSeenDate) / (1000 * 60);
-  return diffMinutes < 5; // User is considered online if seen in the last 5 minutes
+  return (now - lastSeenDate) / 1000 < 300; 
 };
 
-// Fix: Implementation of updatePresence to record the latest user activity timestamp
 export const updatePresence = async (email: string) => {
   try {
     const now = new Date().toISOString();
@@ -133,7 +130,6 @@ export const getAdminPassword = () => {
   return getEnv('VITE_PASSW') || 'satmoko123';
 };
 
-// MIDTRANS
 export const createMidtransToken = async (email: string, amount: number, price: number) => {
   const serverKey = getEnv('VITE_MIDTRANS_SERVER_ID');
   if (!serverKey) return null;
@@ -172,7 +168,6 @@ export const requestTopup = async (email: string, amount: number, price: number,
   return { success: true, tid };
 };
 
-// API ROTATION
 let currentSlot = 1;
 export const rotateApiKey = () => {
   currentSlot = currentSlot >= 3 ? 1 : currentSlot + 1;

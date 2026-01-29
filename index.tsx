@@ -4,18 +4,17 @@ import ReactDOM from 'react-dom/client';
 import App from './App';
 import './index.css';
 
-// Mendeklarasikan variabel global agar dikenali oleh TypeScript Compiler (tsc)
-// Fix: Removed duplicate 'process' declaration which conflicts with built-in Node types.
-// Fix: Unified AIStudio type definition and applied it to the Window interface.
 declare global {
+  // Removed var process to fix: Cannot redeclare block-scoped variable 'process'.
+  // It is assumed to be provided by the environment's existing type declarations.
   interface AIStudio {
     hasSelectedApiKey: () => Promise<boolean>;
     openSelectKey: () => Promise<void>;
   }
-
   interface Window {
     snap: any;
-    aistudio: AIStudio;
+    // Added optional modifier to fix: All declarations of 'aistudio' must have identical modifiers.
+    aistudio?: AIStudio;
   }
 }
 
