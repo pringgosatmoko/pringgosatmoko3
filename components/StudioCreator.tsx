@@ -1,30 +1,14 @@
 
-import React, { useState, useRef, useEffect } from 'react';
-import { GoogleGenAI, Type, Modality, VideoGenerationReferenceType } from '@google/genai';
+import React, { useState, useEffect } from 'react';
+import { GoogleGenAI, Type } from '@google/genai';
 import { motion, AnimatePresence } from 'framer-motion';
-import { deductCredits, sendTelegramNotification, getSystemSettings, rotateApiKey } from '../lib/api';
+import { deductCredits, getSystemSettings, rotateApiKey } from '../lib/api';
 
 interface StoryboardItem {
   scene: string;
-  label?: string;
   visual: string;
   audio: string;
   duration: number;
-  speaker: string;
-  voicePreset: string;
-  transition: string;
-  videoUrl?: string | null;
-  audioUrl?: string | null;
-  endFrame?: string | null;
-  isRendering?: boolean;
-  isAudioLoading?: boolean;
-}
-
-interface LogEntry {
-  id: string;
-  msg: string;
-  type: 'info' | 'success' | 'warning' | 'error';
-  time: string;
 }
 
 interface StudioCreatorProps {
@@ -37,100 +21,29 @@ interface StudioCreatorProps {
 
 export const StudioCreator: React.FC<StudioCreatorProps> = ({ onBack, lang, userEmail, credits, refreshCredits }) => {
   const [title, setTitle] = useState('');
-  const [projectType, setProjectType] = useState<'Iklan' | 'Film'>('Iklan');
-  const [aspectRatio, setAspectRatio] = useState<'16:9' | '9:16' | '1:1' | '21:9'>('9:16');
   const [videoStyle, setVideoStyle] = useState('Disney Pixar');
-  const [cameraAngle, setCameraAngle] = useState('Cinematic Wide');
-  const [targetAge, setTargetAge] = useState<'Dewasa' | 'Anak-anak'>('Dewasa');
-  const [targetGender, setTargetGender] = useState<'Pria' | 'Wanita'>('Wanita');
   const [refImages, setRefImages] = useState<string[]>([]);
-  const [duration, setDuration] = useState<8 | 16 | 32>(16);
   const [isProcessing, setIsProcessing] = useState(false);
   const [step, setStep] = useState<'input' | 'story'>('input');
   const [storyboard, setStoryboard] = useState<StoryboardItem[]>([]);
-  const [charBio, setCharBio] = useState(''); 
-  const [processLogs, setProcessLogs] = useState<LogEntry[]>([]);
-  const [showGuide, setShowGuide] = useState(false);
-  const [costPerScene, setCostPerScene] = useState(150);
+  const [costStudio, setCostStudio] = useState(600);
 
   useEffect(() => {
-    getSystemSettings().then(s => setCostPerScene(Math.floor((s.cost_studio || 600) / 4)));
+    getSystemSettings().then(s => setCostStudio(s.cost_studio || 600));
   }, []);
 
-  const ESTIMATED_SCENES = duration === 8 ? 2 : duration === 16 ? 4 : 6;
-  const estimatedTotalCost = ESTIMATED_SCENES * costPerScene;
-
-  const addLog = (msg: string, type: LogEntry['type'] = 'info') => {
-    const id = Math.random().toString(36).substr(2, 9);
-    const time = new Date().toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
-    setProcessLogs(prev => {
-      const newLogs = [...prev, { id, msg, type, time }];
-      return newLogs.length > 5 ? newLogs.slice(1) : newLogs;
-    });
-  };
-
-  const removeLog = (id: string) => {
-    setProcessLogs(prev => prev.filter(log => log.id !== id));
-  };
-
-  const stylePresets = [
-    { name: 'Disney Pixar', prompt: 'Disney Pixar 3D animation style, cinematic lighting, vibrant' },
-    { name: 'Realistic', prompt: 'Cinematic photorealism, high detail, 8k, natural movement' },
-    { name: 'Anime', prompt: 'Modern high-quality anime, vibrant colors, clean lines' },
-    { name: 'Cyberpunk', prompt: 'Neon cyberpunk aesthetic, moody lighting, rainy streets' },
-    { name: 'Noir', prompt: 'Classic Black and White Noir, high contrast, dramatic shadows' }
-  ];
-
-  const cameraAngles = [
-    'Cinematic Wide', 'Low Angle (Hero)', 'Close-up Detail', 'Bird\'s Eye View', 'Tracking Shot', 'Handheld'
-  ];
-
-  const getVoicePreset = () => {
-    if (targetAge === 'Anak-anak') return 'Puck';
-    return targetGender === 'Pria' ? 'Zephyr' : 'Kore';
-  };
-
-  const handleRefImage = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (files) {
-      Array.from(files).forEach((file: File) => {
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          setRefImages(prev => [...prev, reader.result as string].slice(0, 3));
-          addLog("Gambar referensi ditambahkan.", "success");
-        };
-        reader.readAsDataURL(file);
-      });
-    }
-  };
-
   const constructProject = async (retryCount = 0) => {
+    if (!title || credits < costStudio) return;
     setIsProcessing(true);
-    addLog(retryCount > 0 ? `Mencoba ulang desain cerita... (${retryCount})` : `Merancang alur cerita...`);
+    
     try {
-      // Correct: Use process.env.API_KEY directly as per guidelines.
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      const imageParts = refImages.map(img => ({
-        inlineData: { data: img.split(',')[1], mimeType: img.match(/data:([^;]+);/)?.[1] || 'image/png' }
-      }));
-      
-      const analysisResponse = await ai.models.generateContent({
-        model: 'gemini-3-pro-preview',
-        contents: [{ parts: [{ text: `Analisis detail subjek dalam gambar untuk video. Subjek adalah ${targetAge} ${targetGender}.` }, ...imageParts] }]
-      });
-      
-      const masterBio = analysisResponse.text || '';
-      setCharBio(masterBio);
-      
-      const selectedStyle = stylePresets.find(s => s.name === videoStyle);
-      const voicePreset = getVoicePreset();
+      if (retryCount === 0) {
+        await deductCredits(userEmail, costStudio);
+        refreshCredits();
+      }
 
-      let systemPrompt = `Role: Direktur Kreatif. Proyek: "${title}".
-      TIPE: ${projectType}. Target: ${targetAge} ${targetGender}.
-      KAMERA: ${cameraAngle}. TOTAL DURASI: ${duration} detik. JUMLAH ADEGAN: ${ESTIMATED_SCENES}.
-      STYLE: ${selectedStyle?.prompt}. VOICE_ENGINE: ${voicePreset}.
-      Buat JSON ARRAY berisi ${ESTIMATED_SCENES} adegan. 
-      Wajib ada: scene (judul), visual (prompt video detail), audio (naskah bicara), duration (angka), speaker (${targetGender}), voicePreset (${voicePreset}), transition (efek).`;
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const systemPrompt = `Role: Direktur Kreatif. Proyek: "${title}". Gaya Visual: ${videoStyle}. Buat 4 adegan storyboard dalam format JSON ARRAY.`;
       
       const response = await ai.models.generateContent({
         model: 'gemini-3-pro-preview', 
@@ -145,190 +58,81 @@ export const StudioCreator: React.FC<StudioCreatorProps> = ({ onBack, lang, user
                 scene: { type: Type.STRING }, 
                 visual: { type: Type.STRING }, 
                 audio: { type: Type.STRING }, 
-                duration: { type: Type.NUMBER },
-                speaker: { type: Type.STRING }, 
-                voicePreset: { type: Type.STRING },
-                transition: { type: Type.STRING } 
-              }
+                duration: { type: Type.NUMBER }
+              },
+              required: ["scene", "visual", "audio", "duration"]
             } 
           } 
         }
       });
       
       const data = JSON.parse(response.text || '[]');
-      setStoryboard(data.map((item: any) => ({ 
-        ...item, 
-        videoUrl: null, 
-        audioUrl: null, 
-        isRendering: false, 
-        isAudioLoading: false
-      })));
+      setStoryboard(data);
       setStep('story');
-      addLog("Alur cerita siap!", "success");
-    } catch (e: any) { 
-      const errorMsg = e?.message || "";
-      if (errorMsg.includes("Requested entity was not found.")) {
-        if (window.aistudio) window.aistudio.openSelectKey();
-      }
-
-      if ((errorMsg.includes('429') || errorMsg.includes('quota')) && retryCount < 3) {
-        rotateApiKey();
-        await new Promise(r => setTimeout(r, Math.pow(2, retryCount) * 1000));
-        return constructProject(retryCount + 1);
-      }
-      addLog(`Gagal: ${e.message}`, "error"); 
+    } catch (e: any) {
+      if (retryCount < 2) { rotateApiKey(); return constructProject(retryCount + 1); }
     } finally { setIsProcessing(false); }
   };
 
-  const generateAudio = async (index: number, retryCount = 0) => {
-    addLog(`Membuat suara adegan ${index + 1}...`);
-    setStoryboard(prev => prev.map((s, i) => i === index ? { ...s, isAudioLoading: true } : s));
-    try {
-      // Correct: Use process.env.API_KEY directly as per guidelines.
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash-preview-tts", 
-        contents: [{ parts: [{ text: storyboard[index].audio }] }],
-        config: {
-          responseModalities: [Modality.AUDIO],
-          speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: storyboard[index].voicePreset } } }
-        }
-      });
-      const base64Audio = response?.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-      if (base64Audio) {
-         const binaryString = atob(base64Audio);
-         const bytes = new Uint8Array(binaryString.length);
-         for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
-         
-         const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
-         const dataInt16 = new Int16Array(bytes.buffer);
-         const buffer = audioContext.createBuffer(1, dataInt16.length, 24000);
-         const channelData = buffer.getChannelData(0);
-         for (let i = 0; i < dataInt16.length; i++) channelData[i] = dataInt16[i] / 32768.0;
-
-         const wavBlob = await new Promise<Blob>((resolve) => {
-          const worker = new Worker(URL.createObjectURL(new Blob([`
-            onmessage = function(e) {
-              const buffer = e.data;
-              const length = buffer.length * 2;
-              const view = new DataView(new ArrayBuffer(44 + length));
-              const writeString = (offset, string) => {
-                for (let i = 0; i < string.length; i++) view.setUint8(offset + i, string.charCodeAt(i));
-              };
-              writeString(0, 'RIFF');
-              view.setUint32(4, 36 + length, true);
-              writeString(8, 'WAVE');
-              writeString(12, 'fmt ');
-              view.setUint32(16, 16, true); view.setUint16(20, 1, true);
-              view.setUint16(22, 1, true); view.setUint32(24, 24000, true);
-              view.setUint32(28, 48000, true); view.setUint16(32, 2, true);
-              view.setUint16(34, 16, true); writeString(36, 'data');
-              view.setUint32(40, length, true);
-              for (let i = 0; i < buffer.length; i++) view.setInt16(44 + i * 2, Math.max(-1, Math.min(1, buffer[i])) * 0x7FFF, true);
-              postMessage(new Blob([view], { type: 'audio/wav' }));
-            }
-          `], { type: 'application/javascript' })));
-          worker.onmessage = (e) => resolve(e.data);
-          worker.postMessage(channelData);
-        });
-        const audioUrl = URL.createObjectURL(wavBlob);
-        setStoryboard(prev => prev.map((s, i) => i === index ? { ...s, audioUrl, isAudioLoading: false } : s));
-        addLog(`Suara adegan ${index + 1} selesai.`, "success");
-      }
-    } catch (e: any) { 
-      const errorMsg = e?.message || "";
-      if (errorMsg.includes("Requested entity was not found.")) {
-        if (window.aistudio) window.aistudio.openSelectKey();
-      }
-
-      if ((errorMsg.includes('429') || errorMsg.includes('quota')) && retryCount < 3) {
-        rotateApiKey();
-        await new Promise(r => setTimeout(r, Math.pow(2, retryCount) * 500));
-        return generateAudio(index, retryCount + 1);
-      }
-      addLog("Gagal membuat suara.", "error"); 
-      setStoryboard(prev => prev.map((s, i) => i === index ? { ...s, isAudioLoading: false } : s));
+  const handleRefImage = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => setRefImages(prev => [...prev, reader.result as string].slice(0, 3));
+      reader.readAsDataURL(file);
     }
   };
 
-  const renderVideo = async (index: number, retryCount = 0) => {
-    if (credits < costPerScene && retryCount === 0) return addLog("Kredit Habis!", "error");
-    addLog(`Sedang merender visual adegan ${index + 1}...`);
-    setStoryboard(prev => prev.map((s, i) => i === index ? { ...s, isRendering: true } : s));
-    
-    let isSuccess = false;
-    try {
-      if (retryCount === 0) {
-        const success = await deductCredits(userEmail, costPerScene);
-        if (!success) {
-          setStoryboard(prev => prev.map((s, i) => i === index ? { ...s, isRendering: false } : s));
-          return;
-        }
-        refreshCredits();
-      }
-      
-      // Correct: Use process.env.API_KEY directly as per guidelines.
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      const selectedStyle = stylePresets.find(s => s.name === videoStyle);
-      
-      let actualRatio = aspectRatio === '21:9' ? '16:9' : aspectRatio;
+  return (
+    <div className="space-y-6 pb-20">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <button onClick={onBack} className="w-10 h-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-slate-500 hover:text-white transition-all active:scale-95"><i className="fa-solid fa-chevron-left"></i></button>
+          <h2 className="text-2xl font-bold uppercase italic text-white">Studio <span className="text-cyan-400">Creator</span></h2>
+        </div>
+      </div>
 
-      const finalPrompt = `${storyboard[index].visual}. Gaya: ${selectedStyle?.prompt}. Subjek: ${charBio}. Cinematic lighting, 8k.`;
-      
-      const referenceImagesPayload = refImages.map(img => ({
-        image: {
-          imageBytes: img.split(',')[1],
-          mimeType: img.match(/data:([^;]+);/)?.[1] || 'image/png',
-        },
-        referenceType: VideoGenerationReferenceType.ASSET,
-      }));
-
-      const modelName = refImages.length > 1 ? 'veo-3.1-generate-preview' : 'veo-3.1-fast-generate-preview';
-
-      let operation = await ai.models.generateVideos({
-        model: modelName, 
-        prompt: finalPrompt,
-        config: { 
-          numberOfVideos: 1, 
-          resolution: '720p', 
-          aspectRatio: actualRatio as any,
-          referenceImages: refImages.length > 1 ? referenceImagesPayload : undefined
-        }
-      });
-      
-      while (!operation.done) {
-        await new Promise(r => setTimeout(r, 10000));
-        operation = await ai.operations.getVideosOperation({ operation });
-        if (operation.error) throw operation.error;
-      }
-      
-      const uri = operation.response?.generatedVideos?.[0]?.video?.uri;
-      if (uri) {
-        // Correct: Append API key for fetching the video bytes as per guidelines.
-        const resp = await fetch(`${uri}&key=${process.env.API_KEY}`);
-        const blob = await resp.blob();
-        const videoUrl = URL.createObjectURL(blob);
-        setStoryboard(prev => prev.map((s, i) => i === index ? { ...s, videoUrl, isRendering: false } : s));
-        addLog(`Adegan ${index + 1} selesai (-${costPerScene} CR)`, "success");
-        isSuccess = true;
-      }
-    } catch (e: any) { 
-      const errorMsg = e?.message || "";
-      if (errorMsg.includes("Requested entity was not found.")) {
-        if (window.aistudio) window.aistudio.openSelectKey();
-      }
-
-      if ((errorMsg.includes('429') || errorMsg.includes('quota')) && retryCount < 3) {
-        rotateApiKey();
-        await new Promise(r => setTimeout(r, Math.pow(2, retryCount) * 1000));
-        return renderVideo(index, retryCount + 1);
-      }
-      setStoryboard(prev => prev.map((s, i) => i === index ? { ...s, isRendering: false } : s));
-      addLog("Gagal merender video.", "error"); 
-    } finally { 
-      if (isSuccess || retryCount >= 2) {
-        setStoryboard(prev => prev.map((s, i) => i === index ? { ...s, isRendering: false } : s));
-      }
-      refreshCredits(); 
-    }
-  };
+      {step === 'input' ? (
+        <div className="max-w-4xl mx-auto glass-panel p-10 rounded-[3rem] bg-slate-900/40 space-y-8">
+           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              <div className="space-y-4">
+                 <label className="text-[10px] font-bold uppercase text-slate-500 tracking-widest px-1">Judul Project</label>
+                 <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Contoh: Iklan Kopi Viral" className="w-full bg-black/40 border border-white/10 rounded-2xl py-4 px-6 text-sm text-white focus:border-cyan-500/30 outline-none" />
+              </div>
+              <div className="space-y-4">
+                 <label className="text-[10px] font-bold uppercase text-slate-500 tracking-widest px-1">Referensi Karakter</label>
+                 <div className="grid grid-cols-3 gap-2">
+                    {refImages.map((img, i) => (
+                      <div key={i} className="aspect-square rounded-xl overflow-hidden border border-white/10"><img src={img} className="w-full h-full object-cover" /></div>
+                    ))}
+                    {refImages.length < 3 && (
+                      <label className="aspect-square rounded-xl border border-dashed border-white/10 flex items-center justify-center cursor-pointer hover:bg-white/5">
+                        <i className="fa-solid fa-plus text-slate-700"></i>
+                        <input type="file" onChange={handleRefImage} className="hidden" accept="image/*" />
+                      </label>
+                    )}
+                 </div>
+              </div>
+           </div>
+           <button onClick={constructProject} disabled={isProcessing || !title} className="w-full py-6 bg-cyan-500 text-black font-bold uppercase rounded-3xl shadow-xl hover:bg-white transition-all active:scale-95">
+             {isProcessing ? "MENGKONSTRUKSI..." : "BUAT STORYBOARD SEKARANG"}
+           </button>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+           {storyboard.map((scene, i) => (
+             <div key={i} className="glass-panel p-6 rounded-[2.5rem] bg-[#0d1117] border border-white/5 space-y-4">
+                <div className="flex justify-between items-center">
+                   <span className="px-3 py-1 bg-cyan-500 text-black rounded-lg text-[10px] font-black uppercase">{scene.scene}</span>
+                   <p className="text-[10px] font-bold text-slate-500">{scene.duration}s</p>
+                </div>
+                <p className="text-xs text-white leading-relaxed">{scene.visual}</p>
+                <div className="p-4 bg-black/40 rounded-2xl border border-white/5 italic text-slate-400 text-[11px]">"{scene.audio}"</div>
+             </div>
+           ))}
+           <button onClick={() => setStep('input')} className="lg:col-span-2 py-4 text-slate-500 font-bold uppercase text-[10px] tracking-widest hover:text-white">Kembali Ke Pengaturan</button>
+        </div>
+      )}
+    </div>
+  );
+};
