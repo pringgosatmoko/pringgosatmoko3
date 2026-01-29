@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { GoogleGenAI, VideoGenerationReferenceType } from '@google/genai';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -28,7 +27,6 @@ export const VideoGenerator: React.FC<VideoGeneratorProps> = ({ mode, onBack, la
   const [loadingStep, setLoadingStep] = useState(0);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [processLogs, setProcessLogs] = useState<LogEntry[]>([]);
-  const [showGuide, setShowGuide] = useState(false);
   const [costVideo, setCostVideo] = useState(150);
 
   const loadingMessages = ["Menyiapkan Data...", "Sinkronisasi AI...", "Merender Visual...", "Finalisasi Video..."];
@@ -98,11 +96,6 @@ export const VideoGenerator: React.FC<VideoGeneratorProps> = ({ mode, onBack, la
         addLog("Video Selesai Dibuat!", "success");
       }
     } catch (e: any) { 
-      const errorMsg = e.message || "";
-      if (errorMsg.includes("Requested entity was not found.")) {
-        if (window.aistudio) window.aistudio.openSelectKey();
-      }
-
       if (retryCount < 2) {
         rotateApiKey();
         return generateVideo(retryCount + 1);

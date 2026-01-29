@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { GoogleGenAI } from '@google/genai';
 import { motion } from 'framer-motion';
@@ -97,7 +96,7 @@ export const AspectRatioEditor: React.FC<AspectRatioEditorProps> = ({ onBack, la
               {resultImage ? (
                 <div className="flex flex-col items-center gap-6">
                    <img src={resultImage} className="max-w-full max-h-[450px] rounded-2xl shadow-2xl border border-white/10" />
-                   <a href={resultImage} download="satmoko_reframe.png" className="px-10 py-4 bg-emerald-600 text-white rounded-2xl font-bold uppercase text-[10px] tracking-widest hover:bg-white hover:text-black transition-all">UNDUH HASIL</a>
+                   <a href={resultImage} download="satmoko_reframe.png" className="px-10 py-4 bg-emerald-600 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest hover:bg-white hover:text-black transition-all">UNDUH HASIL</a>
                 </div>
               ) : (
                 <div className="text-center opacity-10 flex flex-col items-center">
