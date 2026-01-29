@@ -11,12 +11,6 @@ interface TopupCenterProps {
   lang: 'id' | 'en';
 }
 
-declare global {
-  interface Window {
-    snap: any;
-  }
-}
-
 export const TopupCenter: React.FC<TopupCenterProps> = ({ onBack, userEmail, credits, refreshCredits, lang }) => {
   const [activeTab, setActiveTab] = useState<'buy' | 'history'>('buy');
   const [paymentMethod, setPaymentMethod] = useState<'auto' | 'manual'>('auto');
@@ -40,11 +34,7 @@ export const TopupCenter: React.FC<TopupCenterProps> = ({ onBack, userEmail, cre
   }, [activeTab]);
 
   const fetchMyHistory = async () => {
-    const { data } = await supabase
-      .from('topup_requests')
-      .select('*')
-      .eq('email', userEmail.toLowerCase())
-      .order('created_at', { ascending: false });
+    const { data } = await supabase.from('topup_requests').select('*').eq('email', userEmail.toLowerCase()).order('created_at', { ascending: false });
     if (data) setMyRequests(data);
   };
 
@@ -70,29 +60,16 @@ export const TopupCenter: React.FC<TopupCenterProps> = ({ onBack, userEmail, cre
             setIsProcessing(false);
           },
           onError: () => {
-            alert(lang === 'id' ? "Gagal diproses." : "Failed.");
+            alert(lang === 'id' ? "Pembayaran Gagal." : "Payment Failed.");
             setIsProcessing(false);
           },
           onClose: () => setIsProcessing(false)
         });
       } else {
-        alert("Server error: Token Midtrans gagal dibuat.");
+        alert("Server Error: Midtrans Token gagal.");
         setIsProcessing(false);
       }
-    } catch (e) {
-      setIsProcessing(false);
-    }
-  };
-
-  const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = (event) => {
-        setReceipt(event.target?.result as string);
-      };
-    }
+    } catch (e) { setIsProcessing(false); }
   };
 
   const handleSubmitManual = async () => {
@@ -105,118 +82,127 @@ export const TopupCenter: React.FC<TopupCenterProps> = ({ onBack, userEmail, cre
         setTransactionId(res.tid);
         setShowSuccess(true);
       }
-    } catch (e) {
-      alert("Error sending manual request.");
-    } finally {
-      setIsProcessing(false);
-    }
+    } catch (e) { alert("Manual Request Error."); }
+    finally { setIsProcessing(false); }
   };
 
   return (
-    <div className="flex flex-col h-[calc(100vh-140px)]">
-      <div className="flex flex-col md:flex-row md:items-center justify-between mb-6 flex-shrink-0 gap-4">
+    <div className="flex flex-col h-full space-y-8">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div className="flex items-center gap-4">
-          <button onClick={onBack} className="w-10 h-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-slate-500 hover:text-white transition-all shadow-xl active:scale-95"><i className="fa-solid fa-chevron-left"></i></button>
-          <button onClick={() => setShowGuide(!showGuide)} className={`w-10 h-10 rounded-xl border transition-all flex items-center justify-center shadow-xl ${showGuide ? 'bg-cyan-500 text-black border-cyan-400' : 'bg-white/5 border-white/5 text-cyan-400'}`}><i className={`fa-solid ${showGuide ? 'fa-xmark' : 'fa-question'} text-[10px]`}></i></button>
-          <div>
-            <h2 className="text-xl md:text-2xl font-black italic uppercase tracking-tighter text-white">Topup <span className="text-cyan-400">Hub</span></h2>
-            <p className="text-[8px] font-black uppercase tracking-[0.4em] text-slate-600 mt-1">Satmoko Secure Payment v2.1</p>
-          </div>
+          <button onClick={onBack} className="w-12 h-12 rounded-[1.2rem] bg-white/5 border border-white/10 flex items-center justify-center text-slate-500 hover:text-white transition-all active:scale-95"><i className="fa-solid fa-chevron-left"></i></button>
+          <h2 className="text-3xl font-black italic uppercase tracking-tighter">Pusat <span className="text-cyan-400">Isi Saldo</span></h2>
         </div>
         
-        <div className="flex items-center gap-4">
-          <div className="flex bg-black/60 p-1 rounded-2xl border border-white/5">
-            <button onClick={() => setActiveTab('buy')} className={`px-5 py-2 rounded-xl text-[9px] font-black uppercase transition-all ${activeTab === 'buy' ? 'bg-cyan-500 text-black' : 'text-slate-500'}`}>PAKET</button>
-            <button onClick={() => setActiveTab('history')} className={`px-5 py-2 rounded-xl text-[9px] font-black uppercase transition-all ${activeTab === 'history' ? 'bg-cyan-500 text-black' : 'text-slate-500'}`}>RIWAYAT</button>
-          </div>
-          <div className="text-right bg-white/5 px-4 py-2 rounded-2xl border border-white/10">
-             <p className="text-[8px] font-black uppercase text-slate-600 tracking-widest mb-1">Saldo Master</p>
-             <p className="text-sm font-black italic text-cyan-400 leading-none">{credits.toLocaleString()} CR</p>
-          </div>
+        <div className="flex bg-black/60 p-1.5 rounded-[1.5rem] border border-white/5 self-start">
+          <button onClick={() => setActiveTab('buy')} className={`px-8 py-3 rounded-2xl text-[10px] font-black uppercase transition-all ${activeTab === 'buy' ? 'bg-cyan-500 text-black shadow-lg shadow-cyan-500/20' : 'text-slate-500'}`}>PAKET</button>
+          <button onClick={() => setActiveTab('history')} className={`px-8 py-3 rounded-2xl text-[10px] font-black uppercase transition-all ${activeTab === 'history' ? 'bg-cyan-500 text-black shadow-lg shadow-cyan-500/20' : 'text-slate-500'}`}>RIWAYAT</button>
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 pb-20">
+      <div className="flex-1 overflow-y-auto no-scrollbar">
         <AnimatePresence mode="wait">
           {activeTab === 'buy' ? (
             !showSuccess ? (
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-                <div className="lg:col-span-8 space-y-6">
-                  <div className="flex bg-black/40 p-1.5 rounded-3xl border border-white/5 w-fit">
-                    <button onClick={() => setPaymentMethod('auto')} className={`px-6 py-3 rounded-2xl text-[10px] font-black uppercase transition-all flex items-center gap-3 ${paymentMethod === 'auto' ? 'bg-cyan-500 text-black shadow-lg shadow-cyan-500/20' : 'text-slate-600'}`}><i className="fa-solid fa-bolt"></i> OTOMATIS (QRIS/VA)</button>
-                    <button onClick={() => setPaymentMethod('manual')} className={`px-6 py-3 rounded-2xl text-[10px] font-black uppercase transition-all flex items-center gap-3 ${paymentMethod === 'manual' ? 'bg-white text-black' : 'text-slate-600'}`}><i className="fa-solid fa-bank"></i> MANUAL (TF BANK)</button>
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 pb-32">
+                <div className="lg:col-span-8 space-y-8">
+                  <div className="flex bg-black/40 p-1.5 rounded-[1.8rem] border border-white/5 w-fit">
+                    <button onClick={() => setPaymentMethod('auto')} className={`px-8 py-4 rounded-2xl text-[10px] font-black uppercase transition-all flex items-center gap-3 ${paymentMethod === 'auto' ? 'bg-cyan-500 text-black' : 'text-slate-500'}`}><i className="fa-solid fa-bolt"></i> OTOMATIS (QRIS/VA)</button>
+                    <button onClick={() => setPaymentMethod('manual')} className={`px-8 py-4 rounded-2xl text-[10px] font-black uppercase transition-all flex items-center gap-3 ${paymentMethod === 'manual' ? 'bg-white text-black' : 'text-slate-500'}`}><i className="fa-solid fa-bank"></i> MANUAL (TRANSFER)</button>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {packages.map((pkg, idx) => (
-                      <button key={idx} onClick={() => setSelectedPackage(idx)} className={`glass-panel p-6 rounded-[2rem] border-2 text-left transition-all ${selectedPackage === idx ? 'border-cyan-500 bg-cyan-500/5' : 'border-white/5 bg-slate-900/40'}`}>
-                        <div className="flex justify-between items-start mb-4">
-                          <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${selectedPackage === idx ? 'bg-cyan-500 text-black' : 'bg-white/5 text-slate-600'}`}><i className="fa-solid fa-coins"></i></div>
+                      <button key={idx} onClick={() => setSelectedPackage(idx)} className={`glass-panel p-8 rounded-[2.5rem] border-2 text-left transition-all ${selectedPackage === idx ? 'border-cyan-500 bg-cyan-500/10' : 'border-white/5 bg-slate-900/40'}`}>
+                        <div className="flex justify-between items-start mb-6">
+                          <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${selectedPackage === idx ? 'bg-cyan-500 text-black' : 'bg-white/5 text-slate-600'}`}><i className="fa-solid fa-coins text-xl"></i></div>
                           <div className="text-right">
-                            <p className="text-[12px] font-black text-white italic">{pkg.credits.toLocaleString()} CR</p>
-                            <p className="text-[10px] font-bold text-slate-500 mt-1">Rp {pkg.price.toLocaleString()}</p>
+                            <p className="text-2xl font-black text-white italic">{pkg.credits.toLocaleString()} <span className="text-[10px] not-italic opacity-40">CR</span></p>
+                            <p className="text-xs font-bold text-cyan-400 mt-2">Rp {pkg.price.toLocaleString()}</p>
                           </div>
                         </div>
-                        <p className="text-[8px] font-black text-slate-600 uppercase tracking-widest">{pkg.label}</p>
+                        <p className="text-[9px] font-black text-slate-600 uppercase tracking-widest leading-relaxed">{pkg.label}</p>
                       </button>
                     ))}
                   </div>
 
                   {paymentMethod === 'manual' && selectedPackage !== null && (
-                    <div className="glass-panel p-8 rounded-[2rem] bg-slate-900/40 border border-white/5 space-y-6">
-                       <h3 className="text-[10px] font-black uppercase text-white tracking-widest italic">Upload Bukti Transfer Manual</h3>
-                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
-                          <div className="p-4 rounded-xl bg-black/40 border border-white/5 space-y-2">
-                             <p className="text-[10px] font-bold text-slate-400 uppercase">Transfer Ke:</p>
-                             <p className="text-xs font-black text-white tracking-widest">BANK MANDIRI: 123-000-999-888</p>
-                             <p className="text-[9px] font-bold text-slate-600">A/N SATMOKO STUDIO</p>
+                    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="glass-panel p-10 rounded-[3rem] bg-slate-900/40 border border-white/5 space-y-8">
+                       <h3 className="text-xs font-black uppercase text-white tracking-widest italic">Instruksi Transfer Manual</h3>
+                       <div className="grid grid-cols-1 md:grid-cols-2 gap-10 items-center">
+                          <div className="space-y-4">
+                             <div className="p-5 rounded-2xl bg-black/40 border border-white/5">
+                                <p className="text-[9px] font-black text-slate-500 uppercase mb-2">BANK MANDIRI</p>
+                                <p className="text-lg font-black text-white tracking-widest leading-none">123-000-999-888</p>
+                                <p className="text-[10px] font-bold text-slate-600 mt-3">A/N SATMOKO STUDIO</p>
+                             </div>
+                             <p className="text-[10px] text-slate-500 font-bold italic">Kirim bukti transfer gambar yang jelas untuk persetujuan Admin.</p>
                           </div>
-                          <div className="relative aspect-video rounded-2xl border-2 border-dashed border-white/10 flex items-center justify-center overflow-hidden bg-black/20">
+                          <div className="relative aspect-video rounded-3xl border-2 border-dashed border-white/10 flex items-center justify-center overflow-hidden bg-black/20 group">
                             {receipt ? <img src={receipt} className="w-full h-full object-contain" /> : (
                               <label className="w-full h-full flex flex-col items-center justify-center cursor-pointer">
-                                 <i className="fa-solid fa-camera text-slate-800 text-2xl mb-2"></i>
-                                 <input type="file" onChange={handleFile} className="hidden" accept="image/*" />
+                                 <i className="fa-solid fa-cloud-arrow-up text-slate-800 text-3xl mb-3"></i>
+                                 <p className="text-[9px] font-black text-slate-700 uppercase tracking-widest">UPLOAD BUKTI</p>
+                                 <input type="file" onChange={(e) => {
+                                   const f = e.target.files?.[0];
+                                   if (f) { const r = new FileReader(); r.onload = (ev) => setReceipt(ev.target?.result as string); r.readAsDataURL(f); }
+                                 }} className="hidden" accept="image/*" />
                               </label>
                             )}
                           </div>
                        </div>
-                    </div>
+                    </motion.div>
                   )}
                 </div>
 
                 <div className="lg:col-span-4">
-                  <div className="glass-panel p-8 rounded-[2.5rem] bg-[#0d1117] border border-white/5 shadow-2xl space-y-6">
-                    <p className="text-[10px] font-black text-cyan-500 uppercase tracking-widest">Ringkasan</p>
-                    {selectedPackage !== null && (
-                       <div className="space-y-4">
-                          <div className="flex justify-between text-[11px] font-bold"><span className="text-slate-500">NOMINAL:</span><span className="text-cyan-400">Rp {packages[selectedPackage].price.toLocaleString()}</span></div>
-                          <div className="pt-4 border-t border-white/5 flex justify-between"><span className="text-xs font-black text-white">TOTAL</span><span className="text-xl font-black italic text-cyan-400">Rp {packages[selectedPackage].price.toLocaleString()}</span></div>
+                  <div className="glass-panel p-10 rounded-[3rem] bg-[#0d1117] border border-white/5 shadow-2xl space-y-8 sticky top-6">
+                    <p className="text-[11px] font-black text-cyan-400 uppercase tracking-widest border-b border-white/5 pb-4">RINGKASAN ORDER</p>
+                    {selectedPackage !== null ? (
+                       <div className="space-y-6">
+                          <div className="flex justify-between text-[11px] font-bold"><span className="text-slate-500">PAKET:</span><span className="text-white uppercase">{packages[selectedPackage].credits} CREDITS</span></div>
+                          <div className="flex justify-between text-[11px] font-bold"><span className="text-slate-500">GATEWAY:</span><span className="text-white uppercase">{paymentMethod}</span></div>
+                          <div className="pt-6 border-t border-white/10 flex justify-between items-end"><span className="text-xs font-black text-white">TOTAL</span><span className="text-3xl font-black italic text-cyan-400">Rp {packages[selectedPackage].price.toLocaleString()}</span></div>
                        </div>
+                    ) : (
+                      <p className="text-[10px] font-bold text-slate-700 italic">Pilih paket akses Master...</p>
                     )}
-                    <button onClick={paymentMethod === 'auto' ? handleMidtransPayment : handleSubmitManual} disabled={selectedPackage === null || isProcessing} className="w-full py-5 rounded-2xl bg-cyan-500 text-black font-black uppercase text-[10px] tracking-widest transition-all active:scale-95 disabled:opacity-20 flex items-center justify-center gap-3">
-                      {isProcessing ? <i className="fa-solid fa-spinner fa-spin"></i> : paymentMethod === 'auto' ? "BAYAR QRIS (OTOMATIS)" : "KONFIRMASI MANUAL"}
+                    <button onClick={paymentMethod === 'auto' ? handleMidtransPayment : handleSubmitManual} disabled={selectedPackage === null || isProcessing || (paymentMethod === 'manual' && !receipt)} className="w-full py-6 rounded-[1.8rem] bg-cyan-500 text-black font-black uppercase text-xs tracking-widest transition-all active:scale-95 disabled:opacity-20 shadow-[0_10px_30px_rgba(34,211,238,0.2)]">
+                      {isProcessing ? "MENSINKRONISASI..." : "KONFIRMASI PEMBAYARAN"}
                     </button>
                   </div>
                 </div>
               </div>
             ) : (
-              <div className="max-w-md mx-auto py-10 text-center space-y-8 glass-panel p-10 rounded-[3rem] border border-cyan-500/30">
-                 <div className="w-20 h-20 rounded-full bg-green-500 text-black flex items-center justify-center mx-auto text-3xl"><i className="fa-solid fa-check"></i></div>
-                 <h3 className="text-xl font-black italic uppercase text-white">TOPUP BERHASIL</h3>
-                 <button onClick={() => { setShowSuccess(false); setActiveTab('history'); }} className="w-full py-4 rounded-xl bg-white/5 border border-white/10 text-white font-black uppercase text-[9px]">LIHAT RIWAYAT</button>
+              <div className="max-w-md mx-auto py-20 text-center space-y-10 glass-panel p-12 rounded-[4rem] border border-cyan-500/30 bg-cyan-500/5">
+                 <div className="w-24 h-24 rounded-[2rem] bg-cyan-500 text-black flex items-center justify-center mx-auto text-4xl shadow-[0_0_40px_rgba(34,211,238,0.4)]"><i className="fa-solid fa-check"></i></div>
+                 <div>
+                    <h3 className="text-2xl font-black italic uppercase text-white tracking-tighter">PERMINTAAN TERKIRIM</h3>
+                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-3">ID TRANSAKSI: {transactionId}</p>
+                 </div>
+                 <button onClick={() => { setShowSuccess(false); setActiveTab('history'); }} className="w-full py-5 rounded-[1.5rem] bg-white text-black font-black uppercase text-[10px] tracking-widest shadow-xl">LIHAT STATUS RIWAYAT</button>
               </div>
             )
           ) : (
-            <div className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pb-32">
                {myRequests.map((req) => (
-                 <div key={req.id} className="glass-panel p-6 rounded-3xl bg-black/40 border border-white/5 flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                       <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${req.status === 'approved' ? 'bg-green-500/10 text-green-500' : 'bg-yellow-500/10 text-yellow-500'}`}><i className={`fa-solid ${req.status === 'approved' ? 'fa-check' : 'fa-clock'}`}></i></div>
-                       <div><p className="text-[10px] font-black text-white">{req.amount.toLocaleString()} CR</p><p className="text-[8px] font-bold text-slate-600">{req.tid}</p></div>
+                 <div key={req.id} className="glass-panel p-8 rounded-[2.5rem] bg-black/40 border border-white/5 flex items-center justify-between group hover:border-cyan-500/30 transition-all">
+                    <div className="flex items-center gap-5">
+                       <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-lg ${req.status === 'approved' ? 'bg-green-500 text-black shadow-[0_0_15px_rgba(34,197,94,0.2)]' : 'bg-yellow-500/10 text-yellow-500'}`}><i className={`fa-solid ${req.status === 'approved' ? 'fa-check' : 'fa-clock'}`}></i></div>
+                       <div>
+                          <p className="text-lg font-black text-white italic">{req.amount.toLocaleString()} CR</p>
+                          <p className="text-[8px] font-bold text-slate-600 uppercase tracking-widest mt-1">{req.tid}</p>
+                       </div>
                     </div>
-                    <span className={`px-3 py-1 rounded-lg text-[8px] font-black uppercase ${req.status === 'approved' ? 'bg-green-500 text-black' : 'bg-yellow-500 text-black'}`}>{req.status}</span>
+                    <span className={`px-4 py-1.5 rounded-xl text-[8px] font-black uppercase tracking-widest ${req.status === 'approved' ? 'bg-green-500/10 text-green-500' : 'bg-yellow-500/10 text-yellow-500 animate-pulse'}`}>{req.status}</span>
                  </div>
                ))}
+               {myRequests.length === 0 && (
+                 <div className="col-span-full py-20 text-center opacity-10">
+                    <i className="fa-solid fa-receipt text-8xl mb-6"></i>
+                    <p className="text-lg font-black uppercase tracking-[1em]">NO_TRANSACTIONS</p>
+                 </div>
+               )}
             </div>
           )}
         </AnimatePresence>

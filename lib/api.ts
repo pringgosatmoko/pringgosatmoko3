@@ -2,24 +2,19 @@
 import { createClient } from '@supabase/supabase-js';
 
 const getEnv = (key: string): string => {
-  // Cek Vite environment first (paling stabil di browser)
   const viteEnv = (import.meta as any).env?.[key];
   if (viteEnv) return viteEnv;
-
-  // Fallback ke window.process yang sudah kita shim di index.tsx
   try {
     if (typeof window !== 'undefined' && window.process?.env?.[key]) {
       return window.process.env[key];
     }
   } catch (e) {}
-
   return "";
 };
 
 const supabaseUrl = getEnv('VITE_DATABASE_URL') || 'https://urokqoorxuiokizesiwa.supabase.co';
 const supabaseAnonKey = getEnv('VITE_SUPABASE_ANON');
 
-// Client fallback jika key tidak ditemukan tanpa memutus rantai eksekusi
 export const supabase = supabaseAnonKey 
   ? createClient(supabaseUrl, supabaseAnonKey)
   : ({
@@ -43,13 +38,13 @@ export const supabase = supabaseAnonKey
 export const getSystemSettings = async () => {
   try {
     const { data } = await supabase.from('settings').select('*');
-    const settings: Record<string, any> = { cost_image: 20, cost_video: 150, cost_voice: 150, cost_studio: 600 };
+    const settings: Record<string, any> = { cost_image: 25, cost_video: 150, cost_voice: 150, cost_studio: 600 };
     if (Array.isArray(data)) {
       data.forEach(item => { if (item?.key) settings[item.key] = item.value; });
     }
     return settings;
   } catch (e) {
-    return { cost_image: 20, cost_video: 150, cost_voice: 150, cost_studio: 600 };
+    return { cost_image: 25, cost_video: 150, cost_voice: 150, cost_studio: 600 };
   }
 };
 
@@ -179,7 +174,6 @@ let currentSlot = 1;
 export const rotateApiKey = () => {
   currentSlot = currentSlot >= 3 ? 1 : currentSlot + 1;
   const nextKey = getEnv(`VITE_GEMINI_API_${currentSlot}`);
-  // Sinkronkan ke process.env untuk SDK
   if (typeof window !== 'undefined' && window.process) {
     window.process.env.API_KEY = nextKey;
   }
