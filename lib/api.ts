@@ -2,11 +2,18 @@
 import { createClient } from '@supabase/supabase-js';
 
 const getEnv = (key: string): string => {
-  if (typeof process !== 'undefined' && process.env && process.env[key]) {
-    return process.env[key];
-  }
-  const win = window as any;
-  return win.process?.env?.[key] || (import.meta as any).env?.[key] || "";
+  // Cek Vite environment first (paling stabil di browser)
+  const viteEnv = (import.meta as any).env?.[key];
+  if (viteEnv) return viteEnv;
+
+  // Fallback ke window.process yang sudah kita shim di index.tsx
+  try {
+    if (typeof window !== 'undefined' && window.process?.env?.[key]) {
+      return window.process.env[key];
+    }
+  } catch (e) {}
+
+  return "";
 };
 
 const supabaseUrl = getEnv('VITE_DATABASE_URL') || 'https://urokqoorxuiokizesiwa.supabase.co';
@@ -172,8 +179,9 @@ let currentSlot = 1;
 export const rotateApiKey = () => {
   currentSlot = currentSlot >= 3 ? 1 : currentSlot + 1;
   const nextKey = getEnv(`VITE_GEMINI_API_${currentSlot}`);
-  if (nextKey && typeof process !== 'undefined') {
-    process.env.API_KEY = nextKey;
+  // Sinkronkan ke process.env untuk SDK
+  if (typeof window !== 'undefined' && window.process) {
+    window.process.env.API_KEY = nextKey;
   }
   return nextKey || getEnv('VITE_GEMINI_API_1');
 };
