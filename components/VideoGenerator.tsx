@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { GoogleGenAI, VideoGenerationReferenceType } from '@google/genai';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -44,7 +45,11 @@ export const VideoGenerator: React.FC<VideoGeneratorProps> = ({ mode, onBack, la
   const addLog = (msg: string, type: LogEntry['type'] = 'info') => {
     const id = Math.random().toString(36).substr(2, 9);
     const time = new Date().toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
-    setProcessLogs(prev => [...prev, { id, msg, type, time }].slice(-5));
+    setProcessLogs(prev => [...prev, { id, msg, type, time }]);
+  };
+
+  const removeLog = (id: string) => {
+    setProcessLogs(prev => prev.filter(log => log.id !== id));
   };
 
   const generateVideo = async (retryCount = 0) => {
@@ -119,13 +124,27 @@ export const VideoGenerator: React.FC<VideoGeneratorProps> = ({ mode, onBack, la
   };
 
   return (
-    <div className="space-y-6 pb-40 relative">
-      <div className="fixed top-6 right-6 z-[300] w-72 lg:w-80 flex flex-col gap-2 pointer-events-none">
+    <div className="space-y-6 pb-40 relative h-full">
+      {/* Swipeable Notifications Area - Memperbaiki Bug "Log Tidak Bisa Hilang" */}
+      <div className="fixed top-6 right-6 z-[1000] w-72 lg:w-80 flex flex-col gap-2 pointer-events-none">
         <AnimatePresence initial={false}>
           {processLogs.map((log) => (
-            <motion.div key={log.id} initial={{ opacity: 0, x: 50 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 300 }} className="p-4 rounded-2xl glass-panel border-l-4 shadow-xl flex flex-col gap-1 border-l-cyan-500 bg-black/40">
-              <span className="text-[7px] font-bold uppercase text-slate-500">{log.time}</span>
+            <motion.div 
+              key={log.id} 
+              initial={{ opacity: 0, x: 100 }} 
+              animate={{ opacity: 1, x: 0 }} 
+              exit={{ opacity: 0, x: 300 }} 
+              drag="x" 
+              dragConstraints={{ left: 0, right: 300 }} 
+              onDragEnd={(_, info) => { if (info.offset.x > 80) removeLog(log.id); }}
+              className={`p-4 rounded-2xl glass-panel border-l-4 shadow-2xl flex flex-col gap-1 pointer-events-auto cursor-grab active:cursor-grabbing backdrop-blur-3xl ${log.type === 'error' ? 'border-l-red-500 bg-red-500/10' : log.type === 'success' ? 'border-l-green-500 bg-green-500/10' : 'border-l-cyan-500 bg-cyan-500/10'}`}
+            >
+              <div className="flex justify-between items-center">
+                <span className="text-[7px] font-bold uppercase text-slate-500">{log.time}</span>
+                <i className="fa-solid fa-arrows-left-right text-[7px] text-white/10"></i>
+              </div>
               <p className="text-[10px] font-medium text-white leading-tight">{log.msg}</p>
+              <p className="text-[6px] text-slate-700 uppercase font-black text-right mt-1">Geser ke kanan untuk hapus</p>
             </motion.div>
           ))}
         </AnimatePresence>
@@ -135,11 +154,11 @@ export const VideoGenerator: React.FC<VideoGeneratorProps> = ({ mode, onBack, la
         <div className="flex items-center gap-4">
           <button onClick={onBack} className="w-10 h-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-slate-400 hover:text-white transition-all shadow-xl active:scale-95"><i className="fa-solid fa-chevron-left"></i></button>
           <div>
-            <h2 className="text-2xl font-bold uppercase italic text-white">AI <span className="text-cyan-500">Video</span></h2>
-            <p className="text-[8px] font-black uppercase text-slate-600 tracking-[0.4em]">SATMOKO_STUDIO_VEO_FX</p>
+            <h2 className="text-2xl font-bold uppercase italic text-white leading-none">AI <span className="text-cyan-500">Video</span></h2>
+            <p className="text-[8px] font-black uppercase text-slate-600 tracking-[0.4em] mt-1">SATMOKO_STUDIO_VEO_FX</p>
           </div>
         </div>
-        <div className="px-6 py-2 bg-white/5 border border-white/5 rounded-2xl">
+        <div className="px-6 py-2 bg-black/40 border border-white/5 rounded-2xl shadow-xl">
            <p className="text-[9px] font-bold uppercase text-slate-600 tracking-widest leading-none mb-1">Saldo</p>
            <p className="text-xl font-bold text-cyan-400 leading-none">{credits.toLocaleString()} CR</p>
         </div>
@@ -150,7 +169,7 @@ export const VideoGenerator: React.FC<VideoGeneratorProps> = ({ mode, onBack, la
           <section className="glass-panel p-8 rounded-[3rem] bg-slate-900/40 space-y-6 shadow-2xl border-white/5">
             <textarea value={prompt} onChange={e => setPrompt(e.target.value)} className="w-full h-32 bg-black/40 border border-white/10 rounded-2xl p-4 text-xs text-white outline-none focus:border-cyan-500/50" placeholder="Tulis instruksi video Master di sini..." />
             <div className="space-y-4">
-              <label className="text-[10px] font-bold uppercase text-slate-500 px-1">Gambar Referensi</label>
+              <label className="text-[10px] font-bold uppercase text-slate-500 px-1">Gambar Referensi (Maks 3)</label>
               <div className="grid grid-cols-3 gap-2">
                 {sourceImages.map((img, i) => (
                   <div key={i} className="aspect-square rounded-xl overflow-hidden border border-white/10 relative">
@@ -159,7 +178,7 @@ export const VideoGenerator: React.FC<VideoGeneratorProps> = ({ mode, onBack, la
                   </div>
                 ))}
                 {sourceImages.length < 3 && (
-                  <label className="aspect-square rounded-xl border border-dashed border-white/10 flex flex-col items-center justify-center cursor-pointer hover:bg-white/5">
+                  <label className="aspect-square rounded-xl border border-dashed border-white/10 flex flex-col items-center justify-center cursor-pointer hover:bg-white/5 transition-colors">
                     <i className="fa-solid fa-plus text-slate-700"></i>
                     <input type="file" onChange={handleImageUpload} className="hidden" accept="image/*" />
                   </label>
@@ -169,8 +188,8 @@ export const VideoGenerator: React.FC<VideoGeneratorProps> = ({ mode, onBack, la
             <div className="space-y-3">
               <label className="text-[10px] font-bold uppercase text-slate-500 px-1">Rasio Aspek</label>
               <div className="flex bg-black/40 p-1 rounded-xl border border-white/5">
-                <button onClick={() => setAspectRatio('16:9')} className={`flex-1 py-2 rounded-lg text-[9px] font-black transition-all ${aspectRatio === '16:9' ? 'bg-cyan-500 text-black' : 'text-slate-600'}`}>16:9</button>
-                <button onClick={() => setAspectRatio('9:16')} className={`flex-1 py-2 rounded-lg text-[9px] font-black transition-all ${aspectRatio === '9:16' ? 'bg-cyan-500 text-black' : 'text-slate-600'}`}>9:16</button>
+                <button onClick={() => setAspectRatio('16:9')} className={`flex-1 py-2 rounded-lg text-[9px] font-black transition-all ${aspectRatio === '16:9' ? 'bg-cyan-500 text-black shadow-lg shadow-cyan-500/20' : 'text-slate-600 hover:text-white'}`}>16:9</button>
+                <button onClick={() => setAspectRatio('9:16')} className={`flex-1 py-2 rounded-lg text-[9px] font-black transition-all ${aspectRatio === '9:16' ? 'bg-cyan-500 text-black shadow-lg shadow-cyan-500/20' : 'text-slate-600 hover:text-white'}`}>9:16</button>
               </div>
             </div>
             <button onClick={() => generateVideo()} disabled={isGenerating || (!prompt && sourceImages.length === 0)} className="w-full py-5 bg-white text-black font-bold uppercase rounded-2xl hover:bg-cyan-500 transition-all shadow-xl active:scale-95 disabled:opacity-20 text-[10px] tracking-widest">
@@ -189,7 +208,7 @@ export const VideoGenerator: React.FC<VideoGeneratorProps> = ({ mode, onBack, la
             ) : (
               <div className="text-center opacity-10 flex flex-col items-center">
                 <i className="fa-solid fa-film text-8xl mb-6"></i>
-                <p className="text-[11px] font-black uppercase tracking-[0.8em]">WAITING_FOR_INPUT</p>
+                <p className="text-[11px] font-black uppercase tracking-[0.8em]">READY_FOR_NEURAL_VEO</p>
               </div>
             )}
             
@@ -197,7 +216,7 @@ export const VideoGenerator: React.FC<VideoGeneratorProps> = ({ mode, onBack, la
               <div className="absolute inset-0 bg-black/40 backdrop-blur-sm z-30 flex flex-col items-center justify-center">
                 <motion.div animate={{ rotate: 360 }} transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }} className="w-16 h-16 border-4 border-cyan-500 border-t-transparent rounded-full mb-6 shadow-[0_0_20px_rgba(34,211,238,0.4)]" />
                 <p className="text-[10px] font-black text-cyan-400 uppercase tracking-[0.4em] animate-pulse">GENERATIVE_RENDER_ACTIVE</p>
-                <p className="text-[8px] text-white/40 mt-2">{loadingMessages[loadingStep]}</p>
+                <p className="text-[8px] text-white/40 mt-2 uppercase tracking-widest">{loadingMessages[loadingStep]}</p>
               </div>
             )}
           </div>

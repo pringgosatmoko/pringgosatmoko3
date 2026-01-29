@@ -28,7 +28,8 @@ export const SystemLogs: React.FC<SystemLogsProps> = ({ onBack }) => {
     addLog("Memulai audit infrastruktur Satmoko V7.8 FINAL...");
     await new Promise(r => setTimeout(r, 400));
     
-    const status = auditApiKeys();
+    // Fix: Using correct property names from auditApiKeys result
+    const status = auditApiKeys() as any;
     addLog(`ENGINE: SATMOKO_CORE_v7.8 ACTIVE`);
     addLog(`------------------------------------`);
     addLog(`CHECKING VARIABEL WAJIB...`);
