@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { GoogleGenAI } from '@google/genai';
@@ -29,21 +28,19 @@ export const ChatAssistant: React.FC<ChatAssistantProps> = ({ onBack, lang }) =>
     }
   }, [messages, isTyping]);
 
-  const handleSend = async (retryCount = 0) => {
-    const userMsg = input.trim();
-    if (!userMsg && retryCount === 0) return;
-    if (isTyping && retryCount === 0) return;
+  const handleSend = async (manualText?: string, retryCount = 0) => {
+    const userMsg = manualText || input.trim();
+    if (!userMsg) return;
     
     if (retryCount === 0) {
       setInput('');
       setMessages(prev => [...prev, { role: 'user', text: userMsg }]);
+      setIsTyping(true);
     }
-    
-    setIsTyping(true);
 
     try {
-      // Create a new instance right before use to ensure the latest API key
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      // Gunakan kunci terbaru dari process.env.API_KEY yang sudah dirotasi
+      const ai = new GoogleGenAI({ apiKey: (window as any).process.env.API_KEY });
       
       const systemInstruction = `Anda adalah "SATMOKO AI CORE" - Intelijen Utama Satmoko Studio Creative.
 
@@ -61,35 +58,39 @@ PENGETAHUAN SELURUH PRODUK:
 - Aspect Ratio: Outpainting (perluas latar gambar tanpa potong subjek).
 
 GAYA KOMUNIKASI:
-- Jawab secara SIMPEL, SINGKAT, dan JELAS (Langsung ke poinnya).
-- Jangan jelasin panjang lebar KECUALI Bro (user) minta: "jelaskan secara detail", "gimana cara kerjanya secara rinci", atau "kasih langkah-langkah detail".
-- Jika ditanya hal umum di luar studio, jawab singkat dan arahkan kembali ke fitur kreatif kita.`;
+- Jawab secara SIMPEL, SINGKAT, dan JELAS.
+- Jangan bertele-tele kecuali diminta detail.`;
 
       const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
-        contents: retryCount === 0 ? userMsg : messages[messages.length - 1].text,
+        contents: userMsg,
         config: { 
           systemInstruction: systemInstruction,
-          temperature: 0.75,
+          temperature: 0.8,
         },
       });
 
-      const reply = response.text || (lang === 'id' ? "Sorry Bro, koneksi lagi agak lag. Bisa ulangi pertanyaannya?" : "Sorry Bro, connection is lagging. Can you repeat?");
+      const reply = response.text;
+      if (!reply) throw new Error("Empty Response");
+
       setMessages(prev => [...prev, { role: 'assistant', text: reply }]);
+      setIsTyping(false);
     } catch (e: any) {
       const errorMsg = e.message || "";
-      if (errorMsg.includes("Requested entity was not found.")) {
-        if (window.aistudio) window.aistudio.openSelectKey();
-      }
+      console.error(`Chat Error (Attempt ${retryCount + 1}):`, errorMsg);
 
-      if (errorMsg.includes('429') && retryCount < 2) {
+      // Logika Rotasi Otomatis jika terkena Quota (429) atau error server (500)
+      if ((errorMsg.includes('429') || errorMsg.includes('quota') || errorMsg.includes('Empty')) && retryCount < 3) {
         rotateApiKey(); 
-        handleSend(retryCount + 1); 
+        // Delay sedikit sebelum retry untuk memberi nafas pada API
+        setTimeout(() => handleSend(userMsg, retryCount + 1), 500);
       } else {
-        setMessages(prev => [...prev, { role: 'assistant', text: lang === 'id' ? `Jalur transmisi lagi padat nih Bro. Gue coba alihkan ke node cadangan ya...` : "Transmission line is busy. Diverting to backup node..." }]);
+        const fallbackMsg = lang === 'id' 
+          ? "Aduh Bro, node transmisi lagi overload nih. Coba kirim ulang chatnya bentar lagi ya!"
+          : "Sorry Bro, transmission nodes are overloaded. Please try resending your message in a moment!";
+        setMessages(prev => [...prev, { role: 'assistant', text: fallbackMsg }]);
+        setIsTyping(false);
       }
-    } finally {
-      setIsTyping(false);
     }
   };
 
@@ -104,10 +105,6 @@ GAYA KOMUNIKASI:
     URL.revokeObjectURL(url);
   };
 
-  const guideContent = lang === 'id'
-    ? "PANDUAN SMART LOGIC:\n1. Tanyakan apa saja seputar operasional studio atau bantuan kreatif.\n2. Masukkan perintah di kolom input bawah.\n3. Tekan enter atau tombol pesawat untuk mengirim.\n4. Gunakan tombol download di pojok kanan atas untuk menyimpan riwayat chat."
-    : "SMART LOGIC GUIDE:\n1. Ask anything about studio operations or creative assistance.\n2. Enter your command in the input field below.\n3. Press enter or the plane button to send.\n4. Use the download button at the top right to save chat history.";
-
   return (
     <div className="flex flex-col h-full gap-6 max-w-6xl mx-auto">
       <div className="flex items-center justify-between px-2 flex-shrink-0">
@@ -120,7 +117,7 @@ GAYA KOMUNIKASI:
           </button>
           <div>
             <h2 className="text-xl lg:text-4xl font-bold uppercase italic tracking-tighter leading-none">Smart <span className="text-cyan-400">Logic</span></h2>
-            <p className="text-[8px] lg:text-[10px] font-bold uppercase tracking-[0.4em] text-slate-600 mt-1 lg:mt-2">SATMOKO_SECURE_VAULT_BRO_v1</p>
+            <p className="text-[8px] lg:text-[10px] font-bold uppercase tracking-[0.4em] text-slate-600 mt-1 lg:mt-2">SATMOKO_SECURE_VAULT_BRO_v1.2</p>
           </div>
         </div>
         <button onClick={downloadHistory} className="w-10 h-10 lg:w-12 lg:h-12 rounded-xl lg:rounded-2xl bg-white/5 border border-white/10 text-slate-400 hover:text-cyan-400 flex items-center justify-center transition-all shadow-xl" title="Simpan Log Chat">
@@ -134,7 +131,7 @@ GAYA KOMUNIKASI:
             <div className="glass-panel p-6 rounded-[2.5rem] bg-cyan-500/5 border border-cyan-500/20 mb-2 shadow-2xl">
                <p className="text-[9px] font-black text-cyan-500 uppercase tracking-[0.4em] mb-3">{lang === 'id' ? 'TANYA JAWAB AI' : 'AI Q&A'}</p>
                <p className="text-[11px] text-slate-300 font-bold uppercase tracking-widest leading-relaxed whitespace-pre-line">
-                 {guideContent}
+                 {"PANDUAN SMART LOGIC:\n1. Tanyakan apa saja seputar operasional studio.\n2. Jika AI melambat, sistem akan otomatis merotasi node kunci.\n3. Gunakan bahasa santai (Bro)."}
                </p>
             </div>
           </motion.div>
@@ -146,9 +143,6 @@ GAYA KOMUNIKASI:
           <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
             <div className={`max-w-[85%] lg:max-w-[75%] p-5 lg:p-8 rounded-2xl lg:rounded-[2.5rem] shadow-2xl relative ${m.role === 'user' ? 'bg-cyan-600 text-white font-bold rounded-tr-none border border-cyan-400/30' : 'bg-[#1c232d] text-slate-200 border border-white/5 rounded-tl-none'}`}>
               <p className="text-xs lg:text-base leading-relaxed whitespace-pre-wrap">{m.text}</p>
-              <div className="absolute top-0 -translate-y-full mb-2 flex items-center gap-2 opacity-30 mt-[-10px]">
-                 <p className="text-[7px] font-bold uppercase tracking-widest">{m.role === 'user' ? 'BRO_TRANSMISSION' : 'SATMOKO_CORE_REPLY'}</p>
-              </div>
             </div>
           </motion.div>
         ))}
@@ -167,11 +161,11 @@ GAYA KOMUNIKASI:
           type="text" 
           value={input} 
           onChange={(e) => setInput(e.target.value)} 
-          onKeyDown={(e) => e.key === 'Enter' && handleSend(0)} 
+          onKeyDown={(e) => e.key === 'Enter' && handleSend()} 
           placeholder="Tanya apa aja ke AI Core, Bro..." 
           className="flex-1 bg-transparent px-4 lg:px-8 py-2 lg:py-4 focus:outline-none text-xs lg:text-base text-white placeholder:text-slate-700 font-medium" 
         />
-        <button onClick={() => handleSend(0)} disabled={isTyping || !input.trim()} className="w-12 h-12 lg:w-16 lg:h-16 rounded-full bg-white text-black hover:bg-cyan-400 transition-all flex items-center justify-center disabled:opacity-20 shadow-lg active:scale-90 flex-shrink-0">
+        <button onClick={() => handleSend()} disabled={isTyping || !input.trim()} className="w-12 h-12 lg:w-16 lg:h-16 rounded-full bg-white text-black hover:bg-cyan-400 transition-all flex items-center justify-center disabled:opacity-20 shadow-lg active:scale-90 flex-shrink-0">
           <i className="fa-solid fa-paper-plane text-sm lg:text-lg"></i>
         </button>
       </div>

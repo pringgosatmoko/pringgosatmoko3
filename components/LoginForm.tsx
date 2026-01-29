@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase, isAdmin, getAdminPassword, sendTelegramNotification } from '../lib/api';
@@ -6,10 +5,9 @@ import { supabase, isAdmin, getAdminPassword, sendTelegramNotification } from '.
 interface LoginFormProps { 
   onSuccess: (email: string, expiry?: string | null) => void;
   lang: 'id' | 'en';
-  forcedMode?: 'login' | 'register';
 }
 
-export const LoginForm: React.FC<LoginFormProps> = ({ onSuccess, lang, forcedMode }) => {
+export const LoginForm: React.FC<LoginFormProps> = ({ onSuccess, lang }) => {
   const [isRegister, setIsRegister] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [fullName, setFullName] = useState('');
@@ -19,61 +17,21 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onSuccess, lang, forcedMod
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
 
-  useEffect(() => {
-    if (forcedMode === 'register') setIsRegister(true);
-    if (forcedMode === 'login') setIsRegister(false);
-  }, [forcedMode]);
-
   const plans = [
-    { label: 'FREE', price: '0', en: 'FREE', enPrice: '0', credits: 100 },
-    { label: '1B', price: '100k', en: '1M', enPrice: '100k', credits: 1000 },
-    { label: '3B', price: '250k', en: '3M', enPrice: '250k', credits: 3500 },
-    { label: '1T', price: '900k', en: '1Y', enPrice: '900k', credits: 15000 }
+    { label: 'FREE', price: '0', credits: 100 },
+    { label: '1B', price: '100k', credits: 1000 },
+    { label: '3B', price: '250k', credits: 3500 },
+    { label: '1T', price: '900k', credits: 15000 }
   ];
-
-  const t = {
-    id: {
-      loginTitle: "MASUK KE AKUN",
-      regTitle: "DAFTAR AKUN BARU",
-      name: "NAMA LENGKAP",
-      email: "ALAMAT EMAIL",
-      pass: "KATA SANDI",
-      plan: "PILIHAN PAKET",
-      submitLogin: "MASUK SEKARANG",
-      submitReg: "DAFTAR SEKARANG",
-      noAccount: "BELUM PUNYA AKUN? DAFTAR",
-      haveAccount: "SUDAH PUNYA AKUN? MASUK",
-      regSuccess: "PENDAFTARAN BERHASIL: Silakan tunggu persetujuan Admin.",
-      regSuccessFree: "PENDAFTARAN BERHASIL: Akun FREE aktif! Silakan masuk untuk bonus 100 CR.",
-      contactAdmin: "HUBUNGI ADMIN",
-      back: "KEMBALI"
-    },
-    en: {
-      loginTitle: "LOGIN TO ACCOUNT",
-      regTitle: "CREATE NEW ACCOUNT",
-      name: "FULL NAME",
-      email: "EMAIL ADDRESS",
-      pass: "PASSWORD",
-      plan: "SELECT PLAN",
-      submitLogin: "LOGIN NOW",
-      submitReg: "REGISTER NOW",
-      noAccount: "NEED AN ACCOUNT? REGISTER",
-      haveAccount: "HAVE AN ACCOUNT? LOGIN",
-      regSuccess: "SUCCESS: Pending admin approval.",
-      regSuccessFree: "SUCCESS: FREE account active! Login to start with 100 CR.",
-      contactAdmin: "CONTACT ADMIN",
-      back: "BACK"
-    }
-  }[lang];
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    setSuccessMsg('');
     setIsLoading(true);
 
     try {
       if (isRegister) {
+        // Proses Registrasi Baru
         const { error: authError } = await supabase.auth.signUp({
           email,
           password,
@@ -81,25 +39,26 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onSuccess, lang, forcedMod
         });
         if (authError) throw authError;
 
-        const selectedPlanData = plans.find(p => p.label === selectedPlan);
-        const initialCredits = selectedPlanData ? selectedPlanData.credits : 100;
-        
-        // LOGIKA FREE: Langsung ACTIVE, lainnya PENDING
+        const pkg = plans.find(p => p.label === selectedPlan);
         const initialStatus = selectedPlan === 'FREE' ? 'active' : 'pending';
-        const expiryDate = selectedPlan === 'FREE' ? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() : null;
+        const expiry = selectedPlan === 'FREE' ? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() : null;
 
-        await supabase.from('members').insert([{ 
+        const { error: dbError } = await supabase.from('members').insert([{ 
           email: email.toLowerCase(), 
           status: initialStatus, 
           full_name: `${fullName} (${selectedPlan})`,
-          credits: initialCredits,
-          valid_until: expiryDate
+          credits: pkg?.credits || 0,
+          valid_until: expiry
         }]);
+        if (dbError) throw dbError;
+
+        sendTelegramNotification(`🆕 *REGISTRASI*\nNama: ${fullName}\nEmail: ${email}\nPaket: ${selectedPlan}\nStatus: ${initialStatus.toUpperCase()}`);
         
-        sendTelegramNotification(`🆕 *PENDAFTARAN BARU*\nNama: ${fullName}\nEmail: ${email}\nPaket: ${selectedPlan}\nStatus: ${initialStatus.toUpperCase()}`);
-        
-        setSuccessMsg(selectedPlan === 'FREE' ? t.regSuccessFree : t.regSuccess);
+        setSuccessMsg(selectedPlan === 'FREE' 
+          ? "BERHASIL! Akun FREE aktif + 100 CR. Silakan login." 
+          : "PENDAFTARAN DITERIMA! Menunggu aktivasi Admin. Hubungi WA Master untuk konfirmasi.");
       } else {
+        // Proses Login
         if (isAdmin(email) && password === getAdminPassword()) {
           onSuccess(email, null);
           return;
@@ -108,85 +67,61 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onSuccess, lang, forcedMod
         const { error: loginError } = await supabase.auth.signInWithPassword({ email, password });
         if (loginError) throw loginError;
 
-        const { data: memberData, error: memberError } = await supabase
-          .from('members')
-          .select('status, valid_until')
-          .eq('email', email.toLowerCase())
-          .single();
-
-        if (memberError || !memberData || memberData.status !== 'active') {
+        const { data: member, error: memError } = await supabase.from('members').select('*').eq('email', email.toLowerCase()).single();
+        if (memError || !member || member.status !== 'active') {
           await supabase.auth.signOut();
-          throw new Error(lang === 'id' ? "AKSES DITOLAK: Akun belum aktif. Hubungi Admin." : "ACCESS DENIED: Account inactive. Contact Admin.");
+          throw new Error("AKSES DITOLAK: Akun belum aktif/disetujui Admin.");
         }
-        onSuccess(email, memberData.valid_until);
+        onSuccess(email, member.valid_until);
       }
     } catch (err: any) {
-      setError(err.message || 'Error');
+      setError(err.message);
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <div className="w-full flex flex-col items-center">
-      <div className="w-full glass-panel p-8 rounded-[2rem] bg-black/60 border border-white/5 shadow-2xl relative overflow-hidden">
-        <div className="mb-6">
-          <h2 className="text-[10px] font-bold uppercase text-slate-500 tracking-[0.4em] text-center">
-            {isRegister ? t.regTitle : t.loginTitle}
-          </h2>
-        </div>
+    <div className="w-full glass-panel p-8 rounded-[2.5rem] bg-black/60 border border-white/5 shadow-2xl relative overflow-hidden">
+      <h2 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.4em] text-center mb-6">
+        {isRegister ? "GATEWAY REGISTRASI" : "GATEWAY LOGIN"}
+      </h2>
 
-        <AnimatePresence mode="wait">
-          {error && (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mb-4 p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-[9px] text-center font-bold uppercase">
-              {error}
-            </motion.div>
-          )}
-          
-          {successMsg ? (
-            <div className="space-y-6 text-center py-2">
-              <p className="text-[10px] text-slate-300 font-bold uppercase tracking-widest leading-relaxed">{successMsg}</p>
-              <div className="space-y-3">
-                {selectedPlan !== 'FREE' && <a href="https://wa.me/6285147007574" target="_blank" className="block w-full py-4 rounded-xl bg-cyan-500 text-black font-bold uppercase text-[10px] tracking-widest shadow-lg shadow-cyan-500/20">{t.contactAdmin}</a>}
-                <button onClick={() => { setSuccessMsg(''); setIsRegister(false); }} className="w-full py-4 rounded-xl bg-white text-black font-bold uppercase text-[10px] tracking-widest">LOGIN SEKARANG</button>
-                <button onClick={() => setSuccessMsg('')} className="text-[9px] font-bold uppercase text-slate-600 hover:text-white transition-colors">{t.back}</button>
-              </div>
-            </div>
-          ) : (
-            <form onSubmit={handleSubmit} className="space-y-3">
-              {isRegister && (
-                <>
-                  <input type="text" required placeholder={t.name} value={fullName} onChange={e => setFullName(e.target.value)} className="w-full bg-white/5 border border-white/5 rounded-xl py-4 px-5 text-white text-[11px] font-bold outline-none focus:border-cyan-500/30 transition-all" />
-                  <div className="grid grid-cols-4 gap-2">
-                    {plans.map(p => (
-                      <button 
-                        key={p.label}
-                        type="button"
-                        onClick={() => setSelectedPlan(p.label)}
-                        className={`py-2 rounded-xl text-[8px] font-bold transition-all border ${selectedPlan === p.label ? 'bg-cyan-500 text-black border-cyan-400' : 'bg-white/5 text-slate-500 border-white/5'}`}
-                      >
-                        {p.label}<br/>{p.price === '0' ? 'FREE' : p.price}
-                      </button>
-                    ))}
-                  </div>
-                </>
-              )}
-              <input type="email" required placeholder={t.email} value={email} onChange={e => setEmail(e.target.value)} className="w-full bg-white/5 border border-white/5 rounded-xl py-4 px-5 text-white text-[11px] font-bold outline-none focus:border-cyan-500/30 transition-all" />
-              <input type="password" required placeholder={t.pass} value={password} onChange={e => setPassword(e.target.value)} className="w-full bg-white/5 border border-white/5 rounded-xl py-4 px-5 text-white text-[11px] font-bold outline-none focus:border-cyan-500/30 transition-all" />
-              
-              <button type="submit" disabled={isLoading} className="w-full py-4 mt-2 rounded-xl bg-white text-black font-bold uppercase text-[10px] tracking-widest hover:bg-cyan-500 transition-all shadow-xl active:scale-95">
-                {isLoading ? "Memproses..." : (isRegister ? t.submitReg : t.submitLogin)}
-              </button>
-            </form>
-          )}
-        </AnimatePresence>
-      </div>
+      <AnimatePresence mode="wait">
+        {successMsg ? (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center space-y-6">
+            <p className="text-xs font-bold text-cyan-400 uppercase tracking-widest leading-relaxed">{successMsg}</p>
+            <button onClick={() => { setSuccessMsg(''); setIsRegister(false); }} className="w-full py-4 rounded-xl bg-white text-black font-black uppercase text-[10px] tracking-widest">KEMBALI KE LOGIN</button>
+          </motion.div>
+        ) : (
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {isRegister && (
+              <>
+                <input type="text" required placeholder="NAMA LENGKAP" value={fullName} onChange={e => setFullName(e.target.value)} className="w-full bg-white/5 border border-white/5 rounded-xl py-4 px-5 text-white text-[11px] font-bold outline-none focus:border-cyan-500/30" />
+                <div className="grid grid-cols-4 gap-2">
+                  {plans.map(p => (
+                    <button key={p.label} type="button" onClick={() => setSelectedPlan(p.label)} className={`py-2 rounded-xl text-[8px] font-black border transition-all ${selectedPlan === p.label ? 'bg-cyan-500 text-black border-cyan-400' : 'bg-white/5 text-slate-600 border-white/5'}`}>
+                      {p.label}<br/>{p.price}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+            <input type="email" required placeholder="EMAIL" value={email} onChange={e => setEmail(e.target.value)} className="w-full bg-white/5 border border-white/5 rounded-xl py-4 px-5 text-white text-[11px] font-bold outline-none focus:border-cyan-500/30" />
+            <input type="password" required placeholder="PASSWORD" value={password} onChange={e => setPassword(e.target.value)} className="w-full bg-white/5 border border-white/5 rounded-xl py-4 px-5 text-white text-[11px] font-bold outline-none focus:border-cyan-500/30" />
+            
+            {error && <p className="text-[9px] text-red-500 font-black uppercase text-center">{error}</p>}
 
-      {!successMsg && (
-        <button onClick={() => setIsRegister(!isRegister)} className="mt-8 text-[9px] font-bold uppercase tracking-[0.2em] text-slate-600 hover:text-cyan-400 transition-colors">
-          {isRegister ? t.haveAccount : t.noAccount}
-        </button>
-      )}
+            <button type="submit" disabled={isLoading} className="w-full py-5 bg-white text-black font-black uppercase rounded-2xl text-[10px] tracking-widest hover:bg-cyan-500 transition-all shadow-xl active:scale-95">
+              {isLoading ? "PROSES..." : (isRegister ? "DAFTAR SEKARANG" : "MASUK KE HUB")}
+            </button>
+            
+            <button type="button" onClick={() => setIsRegister(!isRegister)} className="w-full text-[8px] font-black text-slate-600 uppercase tracking-widest hover:text-white transition-colors">
+              {isRegister ? "SUDAH PUNYA AKUN? LOGIN" : "BELUM PUNYA AKUN? DAFTAR"}
+            </button>
+          </form>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
